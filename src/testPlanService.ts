@@ -25,10 +25,17 @@ export class TestPlanService {
     private testApi: ITestApi,
     private testPlanApi: ITestPlanApi,
     private project: string,
-    private orgUrl: string
-  ) {}
+    private orgUrl: string,
+    private autoCreatePlan: boolean,
+    private autoCreateSuite: boolean
+  ) { }
 
   async ensurePlan(planName: string): Promise<PlanSuiteInfo> {
+    if (this.autoCreatePlan) {
+      console.log(`ℹ️ Auto-create Plan is enabled. Creating new Test Plan: "${planName}"`);
+      return this.createPlan(planName);
+    }
+
     const plans = await this.testPlanApi.getTestPlans(
       this.project,
       undefined,
@@ -41,6 +48,12 @@ export class TestPlanService {
       return { planId: existingPlan.id, rootSuiteId: existingPlan.rootSuite?.id };
     }
 
+    throw new Error(
+      `Test Plan "${planName}" not found and auto-create is disabled (ADO_AUTO_CREATE_PLAN=false).`
+    );
+  }
+
+  private async createPlan(planName: string): Promise<PlanSuiteInfo> {
     const newPlanParams: TestPlanCreateParams = {
       name: planName,
       areaPath: this.project,
@@ -65,15 +78,33 @@ export class TestPlanService {
       this.project,
       planId
     );
+
+    if (this.autoCreateSuite) {
+      console.log(`ℹ️ Auto-create Suite is enabled. Creating new Test Suite: "${suiteName}"`);
+      return this.createSuite(planId, planRootSuiteId, suiteName, suites);
+    }
+
     const existingSuite = suites.find((s) => s.name === suiteName);
 
     if (existingSuite?.id) {
       return { suiteId: existingSuite.id };
     }
 
-    const rootSuite = suites.find((s) => !s.parentSuite) || suites[0];
+    throw new Error(
+      `Test Suite "${suiteName}" not found and auto-create is disabled (ADO_AUTO_CREATE_SUITE=false).`
+    );
+  }
+
+  private async createSuite(
+    planId: number,
+    planRootSuiteId: number | undefined,
+    suiteName: string,
+    existingSuites: any[]
+  ): Promise<SuiteInfo> {
+    const rootSuite = existingSuites.find((s) => !s.parentSuite) || existingSuites[0];
     const parentSuiteId =
-      rootSuite?.id ?? planRootSuiteId ?? existingSuite?.parentSuite?.id;
+      rootSuite?.id ?? planRootSuiteId;
+    // Note: If we are creating new, we attach to Root. If we were looking for existing parent, logic might differ, but for top level suite, attach to root.
     const parentSuiteName = rootSuite?.name || "Root Suite";
 
     if (!parentSuiteId) {

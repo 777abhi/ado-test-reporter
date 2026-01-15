@@ -50,12 +50,19 @@ async function run() {
       ? `AutoSuite-${env.buildNumber || new Date().toISOString().replace(/[:.]/g, "-")}`
       : args.suiteName;
 
-  const testCaseService = new TestCaseService(clients.workItemApi, env.project);
+  const testCaseService = new TestCaseService(
+    clients.workItemApi,
+    env.project,
+    env.fallbackToNameSearch,
+    env.autoCreateTestCases
+  );
   const testPlanService = new TestPlanService(
     clients.testApi,
     clients.testPlanApi,
     env.project,
-    env.orgUrl
+    env.orgUrl,
+    env.autoCreatePlan,
+    env.autoCreateSuite
   );
   const failureTaskService = new FailureTaskService(
     clients.workItemApi,

@@ -12,12 +12,20 @@ export class TestCaseService {
 
   constructor(
     private workItemApi: IWorkItemTrackingApi,
-    private project: string
-  ) {}
+    private project: string,
+    private fallbackToNameSearch: boolean,
+    private autoCreateTestCases: boolean
+  ) { }
 
   async resolve(testName: string, candidateId?: string | null): Promise<TestCaseInfo> {
     const existingFromId = await this.tryGetExistingById(testName, candidateId);
     if (existingFromId) return existingFromId;
+
+    // Fallback: If ID lookup failed (or no ID), try searching by name if enabled.
+    if (this.fallbackToNameSearch) {
+      const existingByName = await this.findByName(testName);
+      if (existingByName) return existingByName;
+    }
 
     if (this.byName.has(testName)) {
       const cached = this.byName.get(testName)!;
@@ -25,6 +33,12 @@ export class TestCaseService {
         `ℹ️ Test Case "${testName}" already exists (ID: ${cached.id}); skipping creation.`
       );
       return cached;
+    }
+
+    if (!this.autoCreateTestCases) {
+      throw new Error(
+        `Test Case "${testName}" not found and auto-create is disabled (ADO_AUTO_CREATE_TEST_CASES=false).`
+      );
     }
 
     return this.createTestCase(testName);
@@ -63,10 +77,44 @@ export class TestCaseService {
       return info;
     } catch (err) {
       console.warn(
-        `⚠️ Test Case ID ${parsedId} not found; creating a new test case for "${testName}".`
+        `⚠️ Test Case ID ${parsedId} not found; proceeding.`
       );
       return null;
     }
+  }
+
+  private async findByName(testName: string): Promise<TestCaseInfo | null> {
+    console.log(`🔍 Searching for Test Case by name: "${testName}"`);
+    const wiql = `SELECT [System.Id], [System.Rev], [System.Title] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND [System.WorkItemType] = 'Test Case' AND [System.Title] = '${testName}'`;
+
+    try {
+      const result = await this.workItemApi.queryByWiql({ query: wiql });
+      if (result.workItems && result.workItems.length > 0) {
+        const firstMatch = result.workItems[0];
+        if (firstMatch.id) {
+          // Fetch full item to get revision? unique query doesn't give rev usually unless specified
+          // Actually getWorkItem usually needed to get current rev reliably if not in query results
+          const existing = await this.workItemApi.getWorkItem(
+            firstMatch.id,
+            ["System.Title", "System.Rev"]
+          );
+
+          const info: TestCaseInfo = {
+            id: firstMatch.id,
+            revision: existing.rev ?? 1,
+            title: testName
+          };
+          this.byId.set(info.id, info);
+          this.byName.set(testName, info);
+          console.log(`✅ Found Test Case by name: ${info.id} -> "${testName}"`);
+          return info;
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️ Error searching for test case by name: ${err}`);
+    }
+    console.log(`⚠️ No existing Test Case found with name "${testName}".`);
+    return null;
   }
 
   private async createTestCase(testName: string): Promise<TestCaseInfo> {

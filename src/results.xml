@@ -9,17 +9,17 @@
 
     <testcase
         classname="com.example.tests.CartTests"
-        name="testAddItem_TC816"
+        name="Add Item To Cart"
         time="0.085" />
 
     <testcase
         classname="com.example.tests.CartTests"
-        name="testRemoveItem_TC817"
+        name="Remove Item From Cart"
         time="0.064" />
 
     <testcase
         classname="com.example.tests.CheckoutTests"
-        name="testApplyCoupon_TC818"
+        name="Apply Coupon Discount"
         time="0.099">
         <failure message="Coupon not applied"
                  type="AssertionError">
@@ -31,7 +31,7 @@ Expected discount to be reflected in total but it was not.
 
     <testcase
         classname="com.example.tests.CheckoutTests"
-        name="testPaymentDeclined_TC819"
+        name="Verify Payment Decline"
         time="0.122">
         <failure message="Payment service returned 402"
                  type="PaymentError">
@@ -43,7 +43,7 @@ Payment gateway responded with 402 Payment Required during checkout.
 
     <testcase
         classname="com.example.tests.OrderHistory"
-        name="testViewOrder_TC820"
+        name="View Order Details"
         time="0.140" />
 
 </testsuite>

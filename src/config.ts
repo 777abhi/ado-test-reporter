@@ -9,6 +9,10 @@ export type AppEnv = {
   buildId: number;
   buildNumber: string;
   createFailureTasks: boolean;
+  fallbackToNameSearch: boolean;
+  autoCreateTestCases: boolean;
+  autoCreatePlan: boolean;
+  autoCreateSuite: boolean;
 };
 
 export type AppArgs = {
@@ -40,13 +44,35 @@ export function loadEnvironment(): AppEnv {
     true
   );
 
+  const fallbackToNameSearch = parseBoolean(
+    process.env.ADO_FALLBACK_TO_NAME_SEARCH,
+    false
+  );
+  const autoCreateTestCases = parseBoolean(
+    process.env.ADO_AUTO_CREATE_TEST_CASES,
+    true
+  );
+  const autoCreatePlan = parseBoolean(process.env.ADO_AUTO_CREATE_PLAN, true);
+  const autoCreateSuite = parseBoolean(process.env.ADO_AUTO_CREATE_SUITE, true);
+
   if (!token || !orgUrl || !project) {
     throw new Error(
       "Missing required environment variables (token/orgUrl/project). Provide SYSTEM_* values in pipeline or set ADO_TOKEN, ADO_ORG_URL, ADO_PROJECT locally."
     );
   }
 
-  return { token, orgUrl, project, buildId, buildNumber, createFailureTasks };
+  return {
+    token,
+    orgUrl,
+    project,
+    buildId,
+    buildNumber,
+    createFailureTasks,
+    fallbackToNameSearch,
+    autoCreateTestCases,
+    autoCreatePlan,
+    autoCreateSuite,
+  };
 }
 
 export function loadArgs(argv: any, defaultJUnit: string): AppArgs {
