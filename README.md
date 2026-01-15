@@ -16,6 +16,14 @@ How it works
 - Map results to Test Points, publish the run, and complete it.
 - On failures, create or update Tasks with links back to the run and Test Case.
 
+Architecture
+
+This project follows SOLID principles to ensure maintainability and testability:
+
+- **Orchestrator Pattern**: The `App` class orchestrates the workflow, separating concerns from `index.ts`.
+- **Dependency Injection**: Services and clients are injected via interfaces, making components loosely coupled.
+- **Service-Oriented**: Distinct services handle Configuration, Test Cases, Test Plans, and Failure Tasks.
+
 Quick start
 
 1. Install dependencies: `npm install`

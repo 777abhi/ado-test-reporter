@@ -4,12 +4,15 @@ TypeScript utility that reads JUnit XML and syncs results to Azure Test Plans: i
 
 Project layout
 
-- src/index.ts — orchestration entrypoint
-- src/config.ts — environment + CLI args (loads local .env if present)
-- src/azureClients.ts — Azure DevOps client factory
-- src/junitParser.ts — JUnit → typed cases
-- src/testCaseService.ts — resolve/reuse/create Test Cases
-- src/testPlanService.ts — plan/suite management, point mapping, run publish
+- src/index.ts — Entry point (bootstraps App)
+- src/App.ts — Main application orchestrator
+- src/config.ts — ConfigService implementation
+- src/AzureClientProvider.ts — Azure DevOps client factory
+- src/junitParser.ts — JUnit parser
+- src/testCaseService.ts — TestCaseService implementation
+- src/testPlanService.ts — TestPlanService implementation
+- src/failureTaskService.ts — FailureTaskService implementation
+- src/interfaces/ — Service interfaces (IConfigService, ITestCaseService, etc.)
 - src/results.xml — sample JUnit with TC ids (e.g., name="testLogin_TC801")
 - azure-pipelines.yml — pipeline example using ts-node
 - .env.example — local-only secret template (.env is gitignored)
