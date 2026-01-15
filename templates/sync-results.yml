@@ -1,0 +1,23 @@
+parameters:
+  junitFile: ''
+  pathForAzureTestSyncer: ''
+  testPlanName: ''
+  testSuiteName: ''
+  createFailureTasks: true
+
+steps:
+  - script: |
+      cd ${{ parameters.pathForAzureTestSyncer }}
+      npm install
+      npx ts-node src/index.ts \
+        --junit-file="${{ parameters.junitFile }}" \
+        --plan-name="${{ parameters.testPlanName }}" \
+        --suite-name="${{ parameters.testSuiteName }}"
+    displayName: Sync Results to Azure Test Plans
+    env:
+      SYSTEM_ACCESSTOKEN: $(pat-pl-test-plan-access)
+      SYSTEM_TEAMFOUNDATIONCOLLECTIONURI: $(System.TeamFoundationCollectionUri)
+      SYSTEM_TEAMPROJECT: $(System.TeamProject)
+      BUILD_BUILDID: $(Build.BuildId)
+      BUILD_BUILDNUMBER: $(Build.BuildNumber)
+      CREATE_FAILURE_TASKS: ${{ parameters.createFailureTasks }}

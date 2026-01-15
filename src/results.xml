@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+    name="SampleTestSuite"
+    tests="5"
+    failures="2"
+    errors="0"
+    skipped="0"
+    time="0.510">
+
+    <testcase
+        classname="com.example.tests.CartTests"
+        name="testAddItem_TC816"
+        time="0.085" />
+
+    <testcase
+        classname="com.example.tests.CartTests"
+        name="testRemoveItem_TC817"
+        time="0.064" />
+
+    <testcase
+        classname="com.example.tests.CheckoutTests"
+        name="testApplyCoupon_TC818"
+        time="0.099">
+        <failure message="Coupon not applied"
+                 type="AssertionError">
+            <![CDATA[
+Expected discount to be reflected in total but it was not.
+            ]]>
+        </failure>
+    </testcase>
+
+    <testcase
+        classname="com.example.tests.CheckoutTests"
+        name="testPaymentDeclined_TC819"
+        time="0.122">
+        <failure message="Payment service returned 402"
+                 type="PaymentError">
+            <![CDATA[
+Payment gateway responded with 402 Payment Required during checkout.
+            ]]>
+        </failure>
+    </testcase>
+
+    <testcase
+        classname="com.example.tests.OrderHistory"
+        name="testViewOrder_TC820"
+        time="0.140" />
+
+</testsuite>

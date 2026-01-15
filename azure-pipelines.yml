@@ -1,0 +1,53 @@
+trigger:
+  - main
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  TEST_PLAN_NAME: "test-plan-ado-test-reporter"
+  TEST_SUITE_NAME: "suite-name-ado-test-reporter"
+  CREATE_FAILURE_TASKS: true
+  AZURE_SERVICE_CONNECTION: "test-service-connection"
+
+steps:
+  - task: AzureCLI@2
+    displayName: "Fetch ADO token via service principal"
+    inputs:
+      azureSubscription: $(AZURE_SERVICE_CONNECTION)
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        # Azure DevOps resource ID (to talk to ADO APIs)
+        TOKEN=$(az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 --query accessToken -o tsv)
+        if [ -z "$TOKEN" ]; then
+          echo "Failed to acquire token" >&2
+          exit 1
+        fi
+        echo "##vso[task.setvariable variable=ADO_TOKEN;issecret=true]$TOKEN"
+
+  - script: |
+      if [ -z "$ADO_TOKEN" ]; then
+        echo "ADO_TOKEN is empty; check the AzureCLI step and service connection permissions." >&2
+        exit 1
+      fi
+      echo "ADO_TOKEN length: ${#ADO_TOKEN}"
+    displayName: "Validate ADO token injected"
+    env:
+      ADO_TOKEN: $(ADO_TOKEN)
+
+  - script: |
+      npm install
+      npx ts-node src/index.ts \
+        --junit-file="src/results.xml" \
+        --plan-name="$(TEST_PLAN_NAME)" \
+        --suite-name="$(TEST_SUITE_NAME)"
+    displayName: "Sync Results to Azure Test Plans"
+    env:
+      SYSTEM_ACCESSTOKEN: $(ADO_TOKEN)
+      ADO_TOKEN: $(ADO_TOKEN)
+      SYSTEM_TEAMFOUNDATIONCOLLECTIONURI: $(System.TeamFoundationCollectionUri)
+      SYSTEM_TEAMPROJECT: $(System.TeamProject)
+      BUILD_BUILDID: $(Build.BuildId)
+      BUILD_BUILDNUMBER: $(Build.BuildNumber)
+      CREATE_FAILURE_TASKS: $(CREATE_FAILURE_TASKS)

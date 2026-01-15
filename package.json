@@ -1,0 +1,22 @@
+{
+  "name": "ado-test-reporter",
+  "version": "1.0.0",
+  "description": "Syncs JUnit results to Azure Test Plans using Pipeline Tokens",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "azure-devops-node-api": "^12.0.0",
+    "dotenv": "^16.3.1",
+    "xml2js": "^0.6.0",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/xml2js": "^0.4.11",
+    "@types/yargs": "^17.0.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
+}
