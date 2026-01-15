@@ -10,17 +10,9 @@ import {
   TestSuiteCreateParams,
   TestSuiteType,
 } from "azure-devops-node-api/interfaces/TestPlanInterfaces";
+import { ITestPlanService, PlanSuiteInfo, SuiteInfo } from "./interfaces/ITestPlanService";
 
-type PlanSuiteInfo = {
-  planId: number;
-  rootSuiteId?: number;
-};
-
-type SuiteInfo = {
-  suiteId: number;
-};
-
-export class TestPlanService {
+export class TestPlanService implements ITestPlanService {
   constructor(
     private testApi: ITestApi,
     private testPlanApi: ITestPlanApi,

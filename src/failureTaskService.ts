@@ -1,3 +1,4 @@
+import { IFailureTaskService, FailureInfo } from "./interfaces/IFailureTaskService";
 import { IWorkItemTrackingApi } from "azure-devops-node-api/WorkItemTrackingApi";
 import {
   JsonPatchOperation,
@@ -5,21 +6,12 @@ import {
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
 import { Wiql } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 
-export type FailureInfo = {
-  testCaseId: string;
-  testName: string;
-  errorMessage?: string;
-  buildNumber: string;
-  runUrl: string;
-  runId: number;
-};
-
-export class FailureTaskService {
+export class FailureTaskService implements IFailureTaskService {
   constructor(
     private workItemApi: IWorkItemTrackingApi,
     private project: string,
     private orgUrl: string
-  ) {}
+  ) { }
 
   private async findExistingTask(testCaseId: string): Promise<number | null> {
     const wiql: Wiql = {

@@ -3,10 +3,9 @@ import {
   JsonPatchOperation,
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
+import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
 
-export type TestCaseInfo = { id: number; revision: number; title: string };
-
-export class TestCaseService {
+export class TestCaseService implements ITestCaseService {
   private byId = new Map<number, TestCaseInfo>();
   private byName = new Map<string, TestCaseInfo>();
 
