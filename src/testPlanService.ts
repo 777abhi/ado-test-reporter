@@ -203,7 +203,7 @@ export class TestPlanService implements ITestPlanService {
     const runModel: RunCreateModel = {
       name: `Run ${buildNumber} - ${suiteName}`,
       plan: { id: String(planId) },
-      pointIds,
+      // pointIds, // Removed to allow addTestResultsToTestRun to handle result creation/linking without conflict
       build: { id: String(buildId) },
       automated: true,
       configurationIds: [],
