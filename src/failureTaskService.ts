@@ -54,12 +54,17 @@ export class FailureTaskService implements IFailureTaskService {
     ];
 
     try {
-      await this.workItemApi.updateWorkItem(
+      const updated = await this.workItemApi.updateWorkItem(
         undefined,
         patch,
         workItemId,
         this.project
       );
+
+      if (!updated || !updated.id) {
+        throw new Error(`Failed to update Work Item ${workItemId} (No ID returned).`);
+      }
+
       this.logger.log(`✏️ Added comment to task ${workItemId}`);
     } catch (e) {
       this.logger.warn(

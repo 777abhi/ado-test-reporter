@@ -210,19 +210,30 @@ export class TestPlanService implements ITestPlanService {
     };
 
     const testRun = await this.testApi.createTestRun(runModel, this.project);
+    if (!testRun || !testRun.id) {
+      throw new Error(`❌ Failed to create Test Run. Arguments: ${JSON.stringify(runModel)}`);
+    }
     this.logger.log(`🚀 Created Test Run: ${testRun.id}`);
 
-    if (results.length > 0 && testRun.id !== undefined) {
-      await this.testApi.addTestResultsToTestRun(
+    if (results.length > 0) {
+      const addedResults = await this.testApi.addTestResultsToTestRun(
         results,
         this.project,
         testRun.id
       );
-      this.logger.log(`📊 Published ${results.length} results.`);
+
+      if (!addedResults || addedResults.length === 0) {
+        throw new Error("❌ Failed to add test results to the run. No results returned from API.");
+      }
+      this.logger.log(`📊 Published ${addedResults.length} results.`);
     }
 
     const runUpdateModel: RunUpdateModel = { state: "Completed" };
-    await this.testApi.updateTestRun(runUpdateModel, this.project, testRun.id!);
+    const updatedRun = await this.testApi.updateTestRun(runUpdateModel, this.project, testRun.id);
+
+    if (!updatedRun || updatedRun.state !== "Completed") {
+      throw new Error(`❌ Failed to mark run as Completed. Current state: ${updatedRun?.state}`);
+    }
     this.logger.log("🏁 Run Completed Successfully.");
 
     const runUrl = new URL(
@@ -230,6 +241,6 @@ export class TestPlanService implements ITestPlanService {
       this.orgUrl
     ).toString();
 
-    return { runId: testRun.id!, runUrl };
+    return { runId: testRun.id, runUrl };
   }
 }

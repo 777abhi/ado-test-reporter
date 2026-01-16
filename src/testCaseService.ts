@@ -51,7 +51,10 @@ export class TestCaseService implements ITestCaseService {
   ): Promise<TestCaseInfo | null> {
     if (!candidateId) return null;
     const parsedId = parseInt(candidateId, 10);
-    if (isNaN(parsedId)) return null;
+    if (isNaN(parsedId)) {
+      this.logger.warn(`⚠️ Invalid Test Case ID provided: "${candidateId}"; ignoring.`);
+      return null;
+    }
 
     if (this.byId.has(parsedId)) {
       const cached = this.byId.get(parsedId)!;
