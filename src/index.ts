@@ -6,6 +6,8 @@ import { AzureClientProvider } from "./AzureClientProvider";
 import { App } from "./App";
 import { IConfigService } from "./interfaces/IConfigService";
 import { IAzureClientProvider } from "./interfaces/IAzureClientProvider";
+import { ConsoleLogger } from "./ConsoleLogger";
+import { JUnitParser } from "./junitParser";
 
 async function run() {
   const defaultJUnit = path.resolve(process.cwd(), "src/results.xml");
@@ -34,7 +36,10 @@ async function run() {
 
   const configService: IConfigService = new ConfigService();
   const azureClientProvider: IAzureClientProvider = new AzureClientProvider();
-  const app = new App(configService, azureClientProvider);
+  const logger = new ConsoleLogger();
+  const parser = new JUnitParser();
+
+  const app = new App(configService, azureClientProvider, parser, logger);
 
   await app.run(argv, defaultJUnit);
 }

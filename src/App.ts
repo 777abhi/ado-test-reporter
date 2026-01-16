@@ -4,7 +4,8 @@ import { IAzureClientProvider } from "./interfaces/IAzureClientProvider";
 import { ITestCaseService } from "./interfaces/ITestCaseService";
 import { ITestPlanService } from "./interfaces/ITestPlanService";
 import { IFailureTaskService } from "./interfaces/IFailureTaskService";
-import { parseJUnit } from "./junitParser";
+import { ILogger } from "./interfaces/ILogger";
+import { ITestResultParser } from "./interfaces/ITestResultParser";
 import { TestCaseResult } from "azure-devops-node-api/interfaces/TestInterfaces";
 import { TestCaseService } from "./testCaseService";
 import { TestPlanService } from "./testPlanService";
@@ -16,7 +17,9 @@ const TC_ID_REGEX = /TC(\d+)/i;
 export class App {
     constructor(
         private configService: IConfigService,
-        private azureClientProvider: IAzureClientProvider
+        private azureClientProvider: IAzureClientProvider,
+        private parser: ITestResultParser,
+        private logger: ILogger
     ) { }
 
     async run(argv: any, defaultJUnit: string) {
@@ -38,7 +41,8 @@ export class App {
             clients.workItemApi,
             env.project,
             env.fallbackToNameSearch,
-            env.autoCreateTestCases
+            env.autoCreateTestCases,
+            this.logger
         );
         const testPlanService: ITestPlanService = new TestPlanService(
             clients.testApi,
@@ -46,12 +50,14 @@ export class App {
             env.project,
             env.orgUrl,
             env.autoCreatePlan,
-            env.autoCreateSuite
+            env.autoCreateSuite,
+            this.logger
         );
         const failureTaskService: IFailureTaskService = new FailureTaskService(
             clients.workItemApi,
             env.project,
-            env.orgUrl
+            env.orgUrl,
+            this.logger
         );
 
         const planInfo = await testPlanService.ensurePlan(actualPlanName);
@@ -61,12 +67,12 @@ export class App {
             actualSuiteName
         );
 
-        const parsedCases = await parseJUnit(args.junitFile);
+        const parsedCases = await this.parser.parse(args.junitFile);
         if (!parsedCases.length) {
-            console.log("No test cases found in the JUnit file; exiting.");
+            this.logger.log("No test cases found in the JUnit file; exiting.");
             return;
         }
-        console.log(`🧪 Parsed ${parsedCases.length} test cases from JUnit.`);
+        this.logger.log(`🧪 Parsed ${parsedCases.length} test cases from JUnit.`);
 
         const resultsToPublish: TestCaseResult[] = [];
         const testCaseIdsToLink: string[] = [];
@@ -117,14 +123,14 @@ export class App {
             suiteInfo.suiteId,
             resultsToPublish
         );
-        console.log(`📌 Mapped test points: ${pointIds.length} pointIds collected.`);
+        this.logger.log(`📌 Mapped test points: ${pointIds.length} pointIds collected.`);
 
         const publishableResults = resultsToPublish.filter((r) => {
-            console.log(
+            this.logger.log(
                 `🔍 Result mapping: ${r.testCaseTitle} -> TC ${r.testCase?.id}, Point ${r.testPoint?.id ?? "none"}`
             );
             if (!r.testPoint?.id) {
-                console.warn(
+                this.logger.warn(
                     `⚠️ Skipping result for ${r.testCaseTitle} because no test point was found (would appear as Other).`
                 );
                 return false;
@@ -133,12 +139,12 @@ export class App {
         });
 
         if (publishableResults.length === 0) {
-            console.warn(
+            this.logger.warn(
                 "⚠️ No results had mapped test points; run will not be published to avoid 'Other' entries."
             );
             return;
         }
-        console.log(
+        this.logger.log(
             `✅ Publishable results: ${publishableResults.length} (of ${resultsToPublish.length} processed).`
         );
 
@@ -163,7 +169,7 @@ export class App {
                 });
             }
         } else {
-            console.log(
+            this.logger.log(
                 "ℹ️ Failure task creation is disabled (CREATE_FAILURE_TASKS=false)."
             );
         }

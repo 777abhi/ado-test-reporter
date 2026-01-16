@@ -4,6 +4,7 @@ import {
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
 import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
+import { ILogger } from "./interfaces/ILogger";
 
 export class TestCaseService implements ITestCaseService {
   private byId = new Map<number, TestCaseInfo>();
@@ -13,7 +14,8 @@ export class TestCaseService implements ITestCaseService {
     private workItemApi: IWorkItemTrackingApi,
     private project: string,
     private fallbackToNameSearch: boolean,
-    private autoCreateTestCases: boolean
+    private autoCreateTestCases: boolean,
+    private logger: ILogger
   ) { }
 
   async resolve(testName: string, candidateId?: string | null): Promise<TestCaseInfo> {
@@ -28,7 +30,7 @@ export class TestCaseService implements ITestCaseService {
 
     if (this.byName.has(testName)) {
       const cached = this.byName.get(testName)!;
-      console.log(
+      this.logger.log(
         `ℹ️ Test Case "${testName}" already exists (ID: ${cached.id}); skipping creation.`
       );
       return cached;
@@ -53,7 +55,7 @@ export class TestCaseService implements ITestCaseService {
 
     if (this.byId.has(parsedId)) {
       const cached = this.byId.get(parsedId)!;
-      console.log(`ℹ️ Using existing Test Case ${parsedId} for "${testName}".`);
+      this.logger.log(`ℹ️ Using existing Test Case ${parsedId} for "${testName}".`);
       return cached;
     }
 
@@ -72,10 +74,10 @@ export class TestCaseService implements ITestCaseService {
       };
       this.byId.set(parsedId, info);
       this.byName.set(testName, info);
-      console.log(`ℹ️ Using existing Test Case ${parsedId} for "${testName}".`);
+      this.logger.log(`ℹ️ Using existing Test Case ${parsedId} for "${testName}".`);
       return info;
     } catch (err) {
-      console.warn(
+      this.logger.warn(
         `⚠️ Test Case ID ${parsedId} not found; proceeding.`
       );
       return null;
@@ -83,7 +85,7 @@ export class TestCaseService implements ITestCaseService {
   }
 
   private async findByName(testName: string): Promise<TestCaseInfo | null> {
-    console.log(`🔍 Searching for Test Case by name: "${testName}"`);
+    this.logger.log(`🔍 Searching for Test Case by name: "${testName}"`);
     const wiql = `SELECT [System.Id], [System.Rev], [System.Title] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND [System.WorkItemType] = 'Test Case' AND [System.Title] = '${testName}'`;
 
     try {
@@ -105,14 +107,14 @@ export class TestCaseService implements ITestCaseService {
           };
           this.byId.set(info.id, info);
           this.byName.set(testName, info);
-          console.log(`✅ Found Test Case by name: ${info.id} -> "${testName}"`);
+          this.logger.log(`✅ Found Test Case by name: ${info.id} -> "${testName}"`);
           return info;
         }
       }
     } catch (err) {
-      console.warn(`⚠️ Error searching for test case by name: ${err}`);
+      this.logger.warn(`⚠️ Error searching for test case by name: ${err}`);
     }
-    console.log(`⚠️ No existing Test Case found with name "${testName}".`);
+    this.logger.log(`⚠️ No existing Test Case found with name "${testName}".`);
     return null;
   }
 
@@ -141,7 +143,7 @@ export class TestCaseService implements ITestCaseService {
     };
     this.byId.set(created.id, info);
     this.byName.set(testName, info);
-    console.log(`🆕 Created Test Case ${created.id} for "${testName}"`);
+    this.logger.log(`🆕 Created Test Case ${created.id} for "${testName}"`);
     return info;
   }
 }

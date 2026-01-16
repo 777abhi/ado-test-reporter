@@ -1,4 +1,5 @@
 import { IFailureTaskService, FailureInfo } from "./interfaces/IFailureTaskService";
+import { ILogger } from "./interfaces/ILogger";
 import { IWorkItemTrackingApi } from "azure-devops-node-api/WorkItemTrackingApi";
 import {
   JsonPatchOperation,
@@ -10,7 +11,8 @@ export class FailureTaskService implements IFailureTaskService {
   constructor(
     private workItemApi: IWorkItemTrackingApi,
     private project: string,
-    private orgUrl: string
+    private orgUrl: string,
+    private logger: ILogger
   ) { }
 
   private async findExistingTask(testCaseId: string): Promise<number | null> {
@@ -34,7 +36,7 @@ export class FailureTaskService implements IFailureTaskService {
       const first = result.workItems && result.workItems[0];
       return first?.id ?? null;
     } catch (e) {
-      console.warn(
+      this.logger.warn(
         `⚠️ Failed to query existing task for TC ${testCaseId}:`,
         (e as Error).message
       );
@@ -58,9 +60,9 @@ export class FailureTaskService implements IFailureTaskService {
         workItemId,
         this.project
       );
-      console.log(`✏️ Added comment to task ${workItemId}`);
+      this.logger.log(`✏️ Added comment to task ${workItemId}`);
     } catch (e) {
-      console.warn(
+      this.logger.warn(
         `⚠️ Failed to add comment to task ${workItemId}:`,
         (e as Error).message
       );
@@ -76,7 +78,7 @@ export class FailureTaskService implements IFailureTaskService {
     ].join("\n");
 
     if (existingTaskId) {
-      console.log(
+      this.logger.log(
         `ℹ️ Task ${existingTaskId} already exists for TC ${failure.testCaseId}; adding comment.`
       );
       await this.addComment(existingTaskId, comment);
@@ -126,7 +128,7 @@ export class FailureTaskService implements IFailureTaskService {
       };
       patch.push(runLink);
     } catch (e) {
-      console.warn(
+      this.logger.warn(
         `⚠️ Skipping relation link for ${failure.testName} due to URL issue:`,
         (e as Error).message
       );
@@ -135,7 +137,7 @@ export class FailureTaskService implements IFailureTaskService {
     const created = await this.workItemApi
       .createWorkItem(undefined, patch, this.project, "Task")
       .catch((err) => {
-        console.error(
+        this.logger.error(
           `❌ Failed to create task for ${failure.testName}:`,
           err?.message || err
         );
@@ -143,12 +145,12 @@ export class FailureTaskService implements IFailureTaskService {
       });
 
     if (!created?.id) {
-      console.warn(
+      this.logger.warn(
         `⚠️ Task was not created for ${failure.testName} (no id returned).`
       );
       return;
     }
 
-    console.log(`📌 Created task ${created.id} for failed test ${failure.testName}`);
+    this.logger.log(`📌 Created task ${created.id} for failed test ${failure.testName}`);
   }
 }

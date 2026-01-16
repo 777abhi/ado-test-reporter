@@ -11,6 +11,7 @@ import {
   TestSuiteType,
 } from "azure-devops-node-api/interfaces/TestPlanInterfaces";
 import { ITestPlanService, PlanSuiteInfo, SuiteInfo } from "./interfaces/ITestPlanService";
+import { ILogger } from "./interfaces/ILogger";
 
 export class TestPlanService implements ITestPlanService {
   constructor(
@@ -19,12 +20,13 @@ export class TestPlanService implements ITestPlanService {
     private project: string,
     private orgUrl: string,
     private autoCreatePlan: boolean,
-    private autoCreateSuite: boolean
+    private autoCreateSuite: boolean,
+    private logger: ILogger
   ) { }
 
   async ensurePlan(planName: string): Promise<PlanSuiteInfo> {
     if (this.autoCreatePlan) {
-      console.log(`ℹ️ Auto-create Plan is enabled. Creating new Test Plan: "${planName}"`);
+      this.logger.log(`ℹ️ Auto-create Plan is enabled. Creating new Test Plan: "${planName}"`);
       return this.createPlan(planName);
     }
 
@@ -72,7 +74,7 @@ export class TestPlanService implements ITestPlanService {
     );
 
     if (this.autoCreateSuite) {
-      console.log(`ℹ️ Auto-create Suite is enabled. Creating new Test Suite: "${suiteName}"`);
+      this.logger.log(`ℹ️ Auto-create Suite is enabled. Creating new Test Suite: "${suiteName}"`);
       return this.createSuite(planId, planRootSuiteId, suiteName, suites);
     }
 
@@ -139,12 +141,12 @@ export class TestPlanService implements ITestPlanService {
 
     const idsToAdd = uniqueIds.filter((id) => !existingIds.has(id));
     if (idsToAdd.length === 0) {
-      console.log("ℹ️ All test cases already linked to suite; skipping add.");
+      this.logger.log("ℹ️ All test cases already linked to suite; skipping add.");
       return;
     }
 
     const idsCsv = idsToAdd.join(",");
-    console.log(`🔗 Linking Test Cases to Suite: ${idsCsv}`);
+    this.logger.log(`🔗 Linking Test Cases to Suite: ${idsCsv}`);
     await this.testApi.addTestCasesToSuite(this.project, planId, suiteId, idsCsv);
   }
 
@@ -181,7 +183,7 @@ export class TestPlanService implements ITestPlanService {
         }
         runPointIds.add(pointInfo.pointId);
       } else {
-        console.warn(
+        this.logger.warn(
           `⚠️ No test point found for test case ${tcId}; result will be unplanned.`
         );
       }
@@ -208,7 +210,7 @@ export class TestPlanService implements ITestPlanService {
     };
 
     const testRun = await this.testApi.createTestRun(runModel, this.project);
-    console.log(`🚀 Created Test Run: ${testRun.id}`);
+    this.logger.log(`🚀 Created Test Run: ${testRun.id}`);
 
     if (results.length > 0 && testRun.id !== undefined) {
       await this.testApi.addTestResultsToTestRun(
@@ -216,12 +218,12 @@ export class TestPlanService implements ITestPlanService {
         this.project,
         testRun.id
       );
-      console.log(`📊 Published ${results.length} results.`);
+      this.logger.log(`📊 Published ${results.length} results.`);
     }
 
     const runUpdateModel: RunUpdateModel = { state: "Completed" };
     await this.testApi.updateTestRun(runUpdateModel, this.project, testRun.id!);
-    console.log("🏁 Run Completed Successfully.");
+    this.logger.log("🏁 Run Completed Successfully.");
 
     const runUrl = new URL(
       `${this.project}/_testManagement/runs?runId=${testRun.id}`,
