@@ -31,6 +31,12 @@ async function run() {
         default: "suite-name-ado-test-reporter",
         describe: "Target Test Suite Name",
       },
+      "attach-results": {
+        type: "boolean",
+        demandOption: false,
+        default: false,
+        describe: "Attach JUnit results XML to the Test Run",
+      },
     })
     .parseSync();
 

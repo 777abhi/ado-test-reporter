@@ -62,7 +62,8 @@ export class ConfigService implements IConfigService {
     const junitFile = path.resolve(argv["junit-file"] || defaultJUnit);
     const planName = argv["plan-name"];
     const suiteName = argv["suite-name"];
-    return { junitFile, planName, suiteName };
+    const attachResults = !!argv["attach-results"];
+    return { junitFile, planName, suiteName, attachResults };
   }
 
   private parseBoolean(value: string | undefined, defaultValue: boolean): boolean {

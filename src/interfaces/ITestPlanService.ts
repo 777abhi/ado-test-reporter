@@ -33,6 +33,7 @@ export interface ITestPlanService {
         buildId: number,
         buildNumber: string,
         results: TestCaseResult[],
-        pointIds: number[]
+        pointIds: number[],
+        attachmentPath?: string
     ): Promise<{ runId: number; runUrl: string }>;
 }
