@@ -9,12 +9,45 @@ Why it matters (for stakeholders)
 - Clean reporting: Results are published against Test Points, avoiding “Other” noise in runs and keeping dashboards trustworthy.
 - Fresh runs on demand: Optional auto-generated Plans/Suites per run keep environments isolated for validation or audits.
 
-How it works
+Current Features
 
-- Parse JUnit XML, extract TC IDs (`..._TC123`), and reuse or create Test Cases.
-- Ensure the target Test Plan/Suite exists (or auto-generate names) and link only missing Test Cases to avoid duplicates.
-- Map results to Test Points, publish the run, and complete it.
-- On failures, create or update Tasks with links back to the run and Test Case.
+### 🔍 Smart Test Case Resolution
+- **ID Extraction**: Automatically extracts Test Case IDs from test names using the pattern `..._TC123`.
+- **Name-based Fallback**: If no ID is found or the ID doesn't exist, it searches for a Test Case by title in the project.
+- **Auto-Creation**: Can automatically create new Test Cases in Azure DevOps if they don't exist (configurable).
+
+### 🛠️ Auto-Provisioning
+- **Test Plans & Suites**: Automatically creates Test Plans and Static Suites if they don't exist, or generates fresh ones per run for isolation.
+- **Dynamic Linking**: Automatically links new Test Cases to the target Test Suite, ensuring the Test Plan is always up-to-date with the latest code.
+
+### 📊 Results Publishing
+- **Test Point Mapping**: Maps JUnit results to specific ADO Test Points to ensure accurate reporting against configurations.
+- **Avoids "Other" Noise**: Validates mappings to prevent unlinked results from appearing as "Other" (unplanned) in ADO dashboards.
+- **Run Management**: Creates, populates, and completes Test Runs automatically.
+
+### 🐛 Defect Management
+- **Auto-Task Creation**: Creates a "Task" work item for failed tests to facilitate immediate action.
+- **Duplicate Prevention**: If an open Task already exists for a failure, it updates the existing Task with a comment instead of creating a duplicate.
+- **Traceability**: Links the Failure Task to both the Test Case and the specific Test Run for full context.
+
+Roadmap: Next Incremental Features (E2E Traceability)
+
+To further enhance End-to-End Traceability, the following features are planned:
+
+1.  **🔄 Auto-Close on Pass**:
+    - Automatically close the associated Failure Task (or Bug) when the test passes in a subsequent run, closing the defect loop.
+
+2.  **🐞 Configurable Defect Type**:
+    - Allow configuration to create "Bug" work items instead of "Task" for failures, aligning with different organizational workflows.
+
+3.  **🔗 Requirement Auto-Linking**:
+    - Parse Requirement/User Story IDs from test names (e.g., `Story123_TC456`) and automatically link the Test Case to the Requirement (Tests/Tested By link).
+
+4.  **📸 Attachment Support**:
+    - Support uploading screenshots, logs, or other artifacts from the test run to the ADO Test Result to assist in debugging.
+
+5.  **🌍 Multi-Configuration Support**:
+    - Enhanced mapping for Test Points across different configurations (e.g., Browser, OS) to support matrix testing.
 
 Architecture
 
