@@ -154,7 +154,8 @@ export class App {
             env.buildId,
             env.buildNumber,
             publishableResults,
-            pointIds
+            pointIds,
+            args.attachResults ? args.junitFile : undefined
         );
 
         if (env.createFailureTasks) {

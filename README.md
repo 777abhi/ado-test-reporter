@@ -67,10 +67,12 @@ Quick start
 npm start -- \
   --junit-file src/results.xml \
   --plan-name "test-plan-ado-test-reporter" \
-  --suite-name "suite-name-ado-test-reporter"
+  --suite-name "suite-name-ado-test-reporter" \
+  --attach-results
 ```
 
 - Use `--plan-name auto-generate` / `--suite-name auto-generate` to create fresh plan/suite per run.
+- Use `--attach-results` to upload the JUnit XML file as a Test Run attachment.
 
 Pipeline usage
 

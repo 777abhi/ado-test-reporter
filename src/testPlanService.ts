@@ -1,9 +1,12 @@
+import * as fs from "fs";
+import * as path from "path";
 import { ITestApi } from "azure-devops-node-api/TestApi";
 import { ITestPlanApi } from "azure-devops-node-api/TestPlanApi";
 import {
   RunCreateModel,
   RunUpdateModel,
   TestCaseResult,
+  TestAttachmentRequestModel,
 } from "azure-devops-node-api/interfaces/TestInterfaces";
 import {
   TestPlanCreateParams,
@@ -198,7 +201,8 @@ export class TestPlanService implements ITestPlanService {
     buildId: number,
     buildNumber: string,
     results: TestCaseResult[],
-    pointIds: number[]
+    pointIds: number[],
+    attachmentPath?: string
   ): Promise<{ runId: number; runUrl: string }> {
     const runModel: RunCreateModel = {
       name: `Run ${buildNumber} - ${suiteName}`,
@@ -214,6 +218,31 @@ export class TestPlanService implements ITestPlanService {
       throw new Error(`❌ Failed to create Test Run. Arguments: ${JSON.stringify(runModel)}`);
     }
     this.logger.log(`🚀 Created Test Run: ${testRun.id}`);
+
+    if (attachmentPath) {
+      try {
+        if (fs.existsSync(attachmentPath)) {
+          const fileContent = fs.readFileSync(attachmentPath);
+          const encoded = fileContent.toString("base64");
+          const attachmentRequest: TestAttachmentRequestModel = {
+            fileName: path.basename(attachmentPath),
+            stream: encoded,
+            attachmentType: "GeneralAttachment",
+            comment: "Attached by ADO Test Reporter",
+          };
+          await this.testApi.createTestRunAttachment(
+            attachmentRequest,
+            this.project,
+            testRun.id
+          );
+          this.logger.log(`📎 Attached file: ${attachmentPath}`);
+        } else {
+          this.logger.warn(`⚠️ Attachment file not found: ${attachmentPath}`);
+        }
+      } catch (err) {
+        this.logger.warn(`⚠️ Failed to attach file: ${err}`);
+      }
+    }
 
     if (results.length > 0) {
       const addedResults = await this.testApi.addTestResultsToTestRun(

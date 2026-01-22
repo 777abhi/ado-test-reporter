@@ -16,6 +16,7 @@ export type AppArgs = {
     junitFile: string;
     planName: string;
     suiteName: string;
+    attachResults: boolean;
 };
 
 export interface IConfigService {
