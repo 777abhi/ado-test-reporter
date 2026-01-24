@@ -30,6 +30,12 @@ Current Features
 - **Duplicate Prevention**: If an open Task already exists for a failure, it updates the existing Task with a comment instead of creating a duplicate.
 - **Traceability**: Links the Failure Task to both the Test Case and the specific Test Run for full context.
 
+### 📝 Feature File Synchronization
+- **Gherkin Sync**: Scans `.feature` files and updates linked Azure DevOps Test Cases with latest steps and descriptions.
+- **Smart Parsing**: Handles `Background` steps and `Rule` blocks, flattening them into the Test Case steps.
+- **Tag-based Linking**: Uses tags like `@TC_123` to identify which ADO Test Case to update.
+- **Step Conversion**: Maps `Given`, `When` to Action and `Then` to Expected Result automatically.
+
 Roadmap: Next Incremental Features (E2E Traceability)
 
 To further enhance End-to-End Traceability, the following features are planned:
@@ -73,6 +79,10 @@ npm start -- \
 
 - Use `--plan-name auto-generate` / `--suite-name auto-generate` to create fresh plan/suite per run.
 - Use `--attach-results` to upload the JUnit XML file as a Test Run attachment.
+
+4. Sync Feature Files:
+   `npm run sync-features`
+   - Scans `features/**/*.feature` and updates ADO Test Cases tagged with `@TC_ID`.
 
 Pipeline usage
 
