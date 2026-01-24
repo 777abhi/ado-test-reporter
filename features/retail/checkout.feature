@@ -8,8 +8,7 @@ Feature: Checkout Process
     Given I am logged in
     And I have items in my shopping cart
 
-  @critical @smoke
-  @TC_731658
+  @critical @smoke @TC_840
   Scenario: Guest Checkout with Credit Card
     Given I proceed to checkout
     When I enter the following shipping address:
@@ -21,15 +20,14 @@ Feature: Checkout Process
     Then I should see the Order Confirmation page
     And I should receive an order confirmation email
 
-  @TC_970794
+  @TC_828
   Scenario: Apple Pay Checkout
     Given I proceed to checkout
     When I select "Apple Pay" as the payment method
     And I authorize the payment
     Then the order should be processed successfully
 
-  @negative
-  @TC_619468
+  @negative @TC_829
   Scenario: Checkout with expired credit card
     Given I proceed to checkout
     When I enter an expired credit card

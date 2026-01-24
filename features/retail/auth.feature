@@ -5,10 +5,9 @@ Feature: User Authentication
   So that I can manage my orders and personal details
 
   Background:
-    Given I am on the home page
+    Given I am on the home page 2
 
-  @smoke
-  @TC_516899
+  @smoke @TC_857
   Scenario: Successful Login
     When I navigate to the login page
     And I enter valid credentials
@@ -18,7 +17,7 @@ Feature: User Authentication
     Then I should be redirected to the "My Account" page
     And I should see a welcome message "Welcome, User"
 
-  @TC_615020
+  @TC_843
   Scenario Outline: Login with invalid credentials
     When I navigate to the login page
     And I enter <username> and <password>
@@ -31,7 +30,7 @@ Feature: User Authentication
       | unknown@usr.com | anypass   | Account not found         |
       |                 | P@ss1234  | Email is required         |
 
-  @TC_309504
+  @TC_844
   Scenario: User Registration
     When I navigate to the registration page
     And I fill in the registration form details:

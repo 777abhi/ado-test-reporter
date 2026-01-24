@@ -7,21 +7,20 @@ Feature: Product Catalog and Search
   Background:
     Given the product catalog is updated
 
-  @smoke
-  @TC_323830
+  @smoke @TC_837
   Scenario: Search for an existing product
     Given I am on the homepage
     When I search for "Wireless Headphones"
     Then I should see a list of products containing "Headphones"
     And the search results count should be greater than 0
 
-  @TC_405223
+  @TC_838
   Scenario: Filter products by category
     Given I am on the "Electronics" category page
     When I apply the filter "Price: Low to High"
     Then the products should be sorted by price ascending
 
-  @TC_750828
+  @TC_839
   Scenario Outline: View Product Details
     Given I am viewing the search results for "<product>"
     When I click on the product titled "<product>"
