@@ -1,34 +1,34 @@
-@catalog @retail
-Feature: Product Catalog and Search
-  As a customer
-  I want to browse and search for products
-  So that I can find items I want to buy
+@catalog @travel
+Feature: Flight Search and Selection
+  As a traveler
+  I want to search for available flights
+  So that I can plan my trip
 
   Background:
-    Given the product catalog is updated
+    Given the flight inventory is updated
 
   @smoke @TC_837
-  Scenario: Search for an existing product
-    Given I am on the homepage
-    When I search for "Wireless Headphones"
-    Then I should see a list of products containing "Headphones"
-    And the search results count should be greater than 0
+  Scenario: Search for Flights (Origin/Destination)
+    Given I am on the flight search page
+    When I search for flights from "LHR" to "JFK"
+    Then I should see a list of available flights
+    And the results should show flight duration and price
 
   @TC_838
-  Scenario: Filter products by category
-    Given I am on the "Electronics" category page
-    When I apply the filter "Price: Low to High"
-    Then the products should be sorted by price ascending
+  Scenario: Filter Flights by Airline
+    Given I have searched for flights
+    When I apply the filter "Airline: British Airways"
+    Then the results should only show flights operated by "British Airways"
 
   @TC_839
-  Scenario Outline: View Product Details
-    Given I am viewing the search results for "<product>"
-    When I click on the product titled "<product>"
-    Then I should see the product details page
-    And the product price should be visible
-    And the "Add to Cart" button should be enabled
+  Scenario Outline: View Flight Details
+    Given I am viewing the search results for "<flight>"
+    When I click on the flight "<flight>"
+    Then I should see the flight details page
+    And the baggage allowance should be visible
+    And the "Select this Flight" button should be enabled
 
     Examples:
-      | product             |
-      | Noise Cancelling HP |
-      | Smartphone X        |
+      | flight |
+      | BA117  |
+      | AA100  |

@@ -1,37 +1,33 @@
-@cart @retail
-Feature: Shopping Cart Management
-  As a customer
-  I want to manage items in my shopping cart
-  So that I can purchase the correct items
+@cart @travel
+Feature: Itinerary Management
+  As a traveler
+  I want to manage my flight selections
+  So that I can customize my journey
 
   Background:
-    Given I am logged in as a legitimate user
-    And I have an empty shopping cart
+    Given I have selected a flight
 
-  @critical
-  @TC_713275
-  Scenario: Add item to cart
-    Given I am on the product details page for "Running Shoes"
-    When I select size "42"
-    And I click "Add to Cart"
-    Then the mini-cart should show "1" item
-    And I should see a success notification "Item added to cart"
+  @critical @TC_713275
+  Scenario: Select Flight Option (Economy/Business)
+    Given I am reviewing my flight selection
+    When I choose "Business Class" upgrade
+    And I click "Update Itinerary"
+    Then the itinerary should reflect "Business Class"
+    And the total price should serve me right
 
   @TC_269259
-  Scenario: Update item quantity in cart
-    Given I have added "Running Shoes" to my cart
-    When I navigate to the shopping cart page
-    And I change the quantity of "Running Shoes" to 2
-    Then the total price should be updated to reflect 2 items
-    And the cart subtotal should be correct
+  Scenario: Add Extra Baggage
+    Given I am on the itinerary page
+    When I add "2" extra checked bags
+    Then the additional baggage fee should be added to the total
+    And the baggage allowance should be updated
 
-  @negative
-  @TC_354929
-  Scenario: Remove item from cart
-    Given I have the following items in my cart:
-      | product       | quantity |
-      | Running Shoes |        1 |
-      | Water Bottle  |        2 |
-    When I remove "Water Bottle" from the cart
-    Then "Water Bottle" should no longer be visible in the cart
-    But "Running Shoes" should remain in the cart
+  @negative @TC_354929
+  Scenario: Remove Flight from Itinerary
+    Given I have the following flights in my itinerary:
+      | flight | origin | dest |
+      | BA117  | LHR    | JFK  |
+      | AA100  | JFK    | LHR  |
+    When I remove "AA100" from the itinerary
+    Then "AA100" should no longer be visible
+    But "BA117" should remain in the itinerary

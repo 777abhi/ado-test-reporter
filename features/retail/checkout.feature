@@ -1,36 +1,35 @@
-@checkout @retail
-Feature: Checkout Process
-  As a customer
-  I want to complete my purchase
-  So that I can receive my products
+@checkout @travel
+Feature: Flight Booking and Payment
+  As a traveler
+  I want to pay for my selected flights
+  So that my seat is confirmed
 
   Background:
-    Given I am logged in
-    And I have items in my shopping cart
+    Given I have a confirmed itinerary
+    And I am on the payment page
 
   @critical @smoke @TC_840
-  Scenario: Guest Checkout with Credit Card
-    Given I proceed to checkout
-    When I enter the following shipping address:
-      | Name    | Street      | City        | Zip   | Country |
-      | Jane Do | 123 Main St | Springfield | 62704 | USA     |
-    And I choose "Standard Shipping"
+  Scenario: Guest Booking with Credit Card
+    Given I choose to checkout as Guest
+    When I enter passenger details:
+      | Name    | Passport | Nationality |
+      | Jane Do | A1234567 | USA         |
     And I enter valid credit card details
-    And I place the order
-    Then I should see the Order Confirmation page
-    And I should receive an order confirmation email
+    And I click "Pay & Book"
+    Then I should see the Booking Confirmation page
+    And I should receive an e-ticket via email
 
   @TC_828
-  Scenario: Apple Pay Checkout
-    Given I proceed to checkout
-    When I select "Apple Pay" as the payment method
-    And I authorize the payment
-    Then the order should be processed successfully
+  Scenario: Pay with Travel Points
+    Given I am logged in as a frequent flyer
+    When I select "Pay with Miles" option
+    And I authorize the points deduction
+    Then the booking should be confirmed without credit card charge
 
   @negative @TC_829
-  Scenario: Checkout with expired credit card
-    Given I proceed to checkout
+  Scenario: Booking with expired credit card
+    Given I choose to pay by Credit Card
     When I enter an expired credit card
-    And I place the order
-    Then I should see a payment error "Credit card is expired"
-    And the order should not be created
+    And I click "Pay & Book"
+    Then I should see a payment error "Card Expired"
+    And the booking should not be created
