@@ -1,97 +1,166 @@
 # ADO Test Reporter
 
-A lightweight service that keeps automated test execution traceable in Azure DevOps. It turns JUnit results into living Test Cases, Plans, Suites, and linked Tasks for failures—so stakeholders always see what shipped, what failed, and where to act.
+A lightweight, robust service that bridges the gap between automated test execution and Azure DevOps Test Plans. It turns ephemeral JUnit results into persistent, traceable data—linking Test Cases, Plans, Suites, and Defects automatically.
 
-Why it matters (for stakeholders)
+---
 
-- Proof of coverage: JUnit tests are mapped to Test Cases and attached to Plans/Suites, so coverage is visible in ADO instead of hidden in pipelines.
-- Faster triage: Failures auto-create/update Tasks with run links and test case references, giving engineers an actionable to-do list.
-- Clean reporting: Results are published against Test Points, avoiding “Other” noise in runs and keeping dashboards trustworthy.
-- Fresh runs on demand: Optional auto-generated Plans/Suites per run keep environments isolated for validation or audits.
+## 💼 Business Perspective: Why it Matters
 
-Current Features
+For Product Owners, QA Managers, and Stakeholders, this tool ensures transparency, compliance, and efficiency in the delivery pipeline.
 
-### 🔍 Smart Test Case Resolution
-- **ID Extraction**: Automatically extracts Test Case IDs from test names using the pattern `..._TC123`.
-- **Name-based Fallback**: If no ID is found or the ID doesn't exist, it searches for a Test Case by title in the project.
-- **Auto-Creation**: Can automatically create new Test Cases in Azure DevOps if they don't exist (configurable).
+### 1. 🛡️ Audit-Ready Traceability
+Manual updates are prone to error. This tool ensures that **every test run is automatically mapped** to the corresponding Test Case in Azure DevOps.
+- **Proof of Execution**: See exactly what was tested, when, and the outcome directly in ADO.
+- **Compliance**: Generate isolated Test Plans/Suites per run for immutable evidence of release quality.
 
-### 🛠️ Auto-Provisioning
-- **Test Plans & Suites**: Automatically creates Test Plans and Static Suites if they don't exist, or generates fresh ones per run for isolation.
-- **Dynamic Linking**: Automatically links new Test Cases to the target Test Suite, ensuring the Test Plan is always up-to-date with the latest code.
+### 2. 📉 Reduced Manual Overhead
+Eliminate the "test tax" of manually creating or updating Test Cases and logging defects.
+- **Zero-Touch Sync**: New automated tests (code) automatically create or update Test Cases (documentation).
+- **Auto-Triage**: Failures automatically create actionable Tasks for developers, removing the need for QA to manually log tickets.
 
-### 📊 Results Publishing
-- **Test Point Mapping**: Maps JUnit results to specific ADO Test Points to ensure accurate reporting against configurations.
-- **Avoids "Other" Noise**: Validates mappings to prevent unlinked results from appearing as "Other" (unplanned) in ADO dashboards.
-- **Run Management**: Creates, populates, and completes Test Runs automatically.
+### 3. 📖 Living Documentation
+Keep your specifications and tests in sync.
+- **Single Source of Truth**: With Gherkin synchronization, your feature files in Git drive the content of your Test Cases in ADO.
+- **Alignment**: Ensures that the "Expected Result" in ADO always matches the latest code implementation.
 
-### 🐛 Defect Management
-- **Auto-Task Creation**: Creates a "Task" work item for failed tests to facilitate immediate action.
-- **Duplicate Prevention**: If an open Task already exists for a failure, it updates the existing Task with a comment instead of creating a duplicate.
-- **Traceability**: Links the Failure Task to both the Test Case and the specific Test Run for full context.
+### 4. 🚀 Accelerated Feedback Loop
+- **Instant Notification**: Failures appear as Work Items in the backlog immediately after the pipeline runs.
+- **Contextual Data**: Developers get deep links to the specific run and test case, speeding up root cause analysis.
 
-### 📝 Feature File Synchronization
-- **Gherkin Sync**: Scans `.feature` files and updates linked Azure DevOps Test Cases with latest steps and descriptions.
-- **Smart Parsing**: Handles `Background` steps and `Rule` blocks, flattening them into the Test Case steps.
-- **Tag-based Linking**: Uses tags like `@TC_123` to identify which ADO Test Case to update.
-- **Step Conversion**: Maps `Given`, `When` to Action and `Then` to Expected Result automatically.
+---
 
-Roadmap: Next Incremental Features (E2E Traceability)
+## ⚙️ Technical Perspective: Key Features
 
-To further enhance End-to-End Traceability, the following features are planned:
+For DevOps Engineers and SDETs, this tool provides a flexible, pipeline-native solution to manage test data at scale.
+
+### 1. 🔌 Universal Compatibility (JUnit XML)
+- **Language Agnostic**: Works with any test runner that outputs standard JUnit XML (Jest, PyTest, Mocha, NUnit, etc.).
+- **Pipeline Native**: Runs as a lightweight Node.js CLI step in Azure Pipelines.
+
+### 2. 🔍 Smart Test Case Resolution
+The tool intelligently maps results to ADO Test Cases:
+- **ID Extraction**: Parsers test names for patterns like `..._TC123` to exact match IDs.
+- **Fuzzy Fallback**: If no ID is found, searches ADO for a Test Case with a matching title.
+- **Auto-Provisioning**: Automatically creates new Test Cases if no match is found (configurable).
+
+### 3. 🥒 Gherkin & BDD Synchronization
+- **Feature File Parsing**: Scans `.feature` files and parses Scenarios, Backgrounds, and Examples.
+- **Step Mapping**: Maps `Given`/`When` -> **Action** and `Then` -> **Expected Result**.
+- **Tag Linking**: Uses tags (e.g., `@TC_123`) to target specific ADO Test Cases.
+
+### 4. 🛠️ Automated Test Management
+- **Dynamic Suites**: Automatically creates Test Plans and Static Suites. Can generate fresh "Release" suites per run.
+- **Test Point Mapping**: Maps results to specific Configuration Test Points, avoiding "Other/Unplanned" noise in reports.
+- **Clean Runs**: Creates, populates, and marks Test Runs as Complete automatically.
+
+### 5. 🐛 Intelligent Defect Management
+- **Auto-Task Creation**: Creates a "Task" work item for failed tests.
+- **Duplicate Prevention**: If an open Task exists for a test, it appends a comment with the new failure details instead of creating a duplicate.
+- **Rich Context**: Links the Task to the Test Case (Related) and the Test Run (Hyperlink).
+
+---
+
+## 🔮 Roadmap: Next Incremental Features
+
+To further enhance End-to-End Traceability and workflow automation, the following features are planned:
 
 1.  **🔄 Auto-Close on Pass**:
-    - Automatically close the associated Failure Task (or Bug) when the test passes in a subsequent run, closing the defect loop.
+    - *Logic*: When a previously failed test passes in a new run, automatically resolve/close the associated Failure Task.
+    - *Benefit*: Closes the defect loop without manual intervention.
 
-2.  **🐞 Configurable Defect Type**:
-    - Allow configuration to create "Bug" work items instead of "Task" for failures, aligning with different organizational workflows.
+2.  **🐞 Configurable Defect Types**:
+    - *Logic*: Allow configuration to create "Bug" work items instead of "Task" (default).
+    - *Benefit*: Aligns with organizations that track test failures formally as Bugs.
 
 3.  **🔗 Requirement Auto-Linking**:
-    - Parse Requirement/User Story IDs from test names (e.g., `Story123_TC456`) and automatically link the Test Case to the Requirement (Tests/Tested By link).
+    - *Logic*: Parse Requirement IDs (e.g., `Story123`, `AB#456`) from test names/tags and link the Test Case to the Requirement (`Tests` / `Tested By` link).
+    - *Benefit*: Automates the Requirement Traceability Matrix (RTM).
 
-4.  **📸 Attachment Support**:
-    - Support uploading screenshots, logs, or other artifacts from the test run to the ADO Test Result to assist in debugging.
+4.  **📸 Artifact & Screenshot Support**:
+    - *Logic*: Support uploading individual test attachments (screenshots, logs) to the Test Result or Failure Task.
+    - *Benefit*: drastically reduces debugging time.
 
-5.  **🌍 Multi-Configuration Support**:
-    - Enhanced mapping for Test Points across different configurations (e.g., Browser, OS) to support matrix testing.
+5.  **📉 Flaky Test Detection**:
+    - *Logic*: Analyze historical outcome data before creating a failure task. If a test toggles frequently, tag it as "Flaky" instead of raising a critical defect.
+    - *Benefit*: Reduces alert fatigue.
 
-Architecture
+6.  **🌍 Multi-Configuration Matrix**:
+    - *Logic*: Enhanced mapping for executing the same test across multiple configurations (e.g., Browser=Chrome vs Edge) in a single run.
 
-This project follows SOLID principles to ensure maintainability and testability:
+---
 
-- **Orchestrator Pattern**: The `App` class orchestrates the workflow, separating concerns from `index.ts`.
-- **Dependency Injection**: Services and clients are injected via interfaces, making components loosely coupled.
-- **Service-Oriented**: Distinct services handle Configuration, Test Cases, Test Plans, and Failure Tasks.
+## 🏗️ Architecture
 
-Quick start
+This project follows **SOLID principles** to ensure maintainability and testability:
+- **Service-Oriented**: Distinct services for Configuration (`ConfigService`), Test Plans (`TestPlanService`), Cases (`TestCaseService`), and Sync (`AdoSyncService`).
+- **Dependency Injection**: All dependencies are injected via interfaces, making the system modular and easy to mock for unit testing.
+- **Orchestrator Pattern**: The main `App` class orchestrates the workflow, keeping the entry point clean.
 
-1. Install dependencies: `npm install`
-2. Configure `.env` (gitignored) from `.env.example` with ADO token, org URL, project.
-3. Run locally:
+---
 
-```node
-npm start -- \
-  --junit-file src/results.xml \
-  --plan-name "test-plan-ado-test-reporter" \
-  --suite-name "suite-name-ado-test-reporter" \
-  --attach-results
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+
+- Azure DevOps Organization & Project
+- A Personal Access Token (PAT) with Read/Write access to Work Items and Test Management.
+
+### Installation
+```bash
+npm install
 ```
 
-- Use `--plan-name auto-generate` / `--suite-name auto-generate` to create fresh plan/suite per run.
-- Use `--attach-results` to upload the JUnit XML file as a Test Run attachment.
+### Configuration
+Create a `.env` file (or set Pipeline variables):
+```ini
+ADO_ORG_URL=https://dev.azure.com/myorg
+ADO_PROJECT=MyProject
+ADO_TOKEN=your_pat_token
+# Optional Toggles
+CREATE_FAILURE_TASKS=true
+ADO_FALLBACK_TO_NAME_SEARCH=false
+ADO_AUTO_CREATE_TEST_CASES=true
+```
 
-4. Sync Feature Files:
-   `npm run sync-features`
-   - Scans `features/**/*.feature` and updates ADO Test Cases tagged with `@TC_ID`.
+### Usage
 
-Pipeline usage
+#### 1. Publish Test Results
+```bash
+npm start -- \
+  --junit-file src/results.xml \
+  --plan-name "Release 1.0" \
+  --suite-name "Regression" \
+  --attach-results
+```
+- Use `--plan-name auto-generate` to create a new plan for every run.
 
-- See `azure-pipelines.yml`: installs deps and runs `npx ts-node src/index.ts`.
-- `CREATE_FAILURE_TASKS` (default true) controls whether Tasks are created for failures.
-- `TEST_PLAN_NAME` / `TEST_SUITE_NAME` can be set to `auto-generate` for per-run isolation.
+#### 2. Sync Feature Files (Gherkin)
+```bash
+npm run sync-features
+```
+- Scans `features/**/*.feature` and updates ADO Test Cases tagged with `@TC_ID`.
 
-Other Useful links
+---
 
-- [Core Logic](docs/sequence-diagram.md)
-- [Screen Shots](https://docs.google.com/presentation/d/1Cdk-6VaNdSHx073H-eCI7MMRfK0EcmA0/edit?usp=sharing&ouid=113003728679286380567&rtpof=true&sd=true)
-- [Technical Docs](docs)
+## 🔧 Pipeline Integration
+
+Add this as a task in `azure-pipelines.yml`:
+
+```yaml
+- script: |
+    npm install
+    npm start -- --junit-file $(Agent.TempDirectory)/results.xml --plan-name "CI Run" --suite-name "Build $(Build.BuildId)"
+  env:
+    ADO_TOKEN: $(System.AccessToken)
+    ADO_ORG_URL: $(System.TeamFoundationCollectionUri)
+    ADO_PROJECT: $(System.TeamProject)
+  displayName: 'Publish Results to ADO'
+```
+
+---
+
+## 📚 Additional Resources
+
+- [Core Logic Sequence Diagram](docs/sequence-diagram.md)
+- [Technical Documentation](docs)
+- [Screenshots & Demo](https://docs.google.com/presentation/d/1Cdk-6VaNdSHx073H-eCI7MMRfK0EcmA0/edit?usp=sharing&ouid=113003728679286380567&rtpof=true&sd=true)
