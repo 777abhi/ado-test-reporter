@@ -10,4 +10,5 @@ export type FailureInfo = {
 
 export interface IFailureTaskService {
     createTaskForFailure(failure: FailureInfo): Promise<void>;
+    resolveTaskForSuccess(testCaseId: string, buildNumber: string): Promise<void>;
 }

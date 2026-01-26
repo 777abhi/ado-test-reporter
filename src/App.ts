@@ -57,7 +57,8 @@ export class App {
             clients.workItemApi,
             env.project,
             env.orgUrl,
-            this.logger
+            this.logger,
+            env.defectType
         );
 
         const planInfo = await testPlanService.ensurePlan(actualPlanName);
@@ -76,6 +77,7 @@ export class App {
 
         const resultsToPublish: TestCaseResult[] = [];
         const testCaseIdsToLink: string[] = [];
+        const passedTestCaseIds: string[] = [];
         const failedForTask: {
             testCaseId: string;
             testName: string;
@@ -109,6 +111,8 @@ export class App {
                     testName: tc.name,
                     errorMessage: tc.errorMessage,
                 });
+            } else if (tc.outcome === "Passed") {
+                passedTestCaseIds.push(String(resolvedTestCase.id));
             }
         }
 
@@ -173,6 +177,13 @@ export class App {
             this.logger.log(
                 "ℹ️ Failure task creation is disabled (CREATE_FAILURE_TASKS=false)."
             );
+        }
+
+        if (env.autoCloseOnPass) {
+            this.logger.log(`🔄 Auto-closing defects for ${passedTestCaseIds.length} passed tests...`);
+            for (const tcId of passedTestCaseIds) {
+                await failureTaskService.resolveTaskForSuccess(tcId, env.buildNumber);
+            }
         }
     }
 }

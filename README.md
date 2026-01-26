@@ -54,9 +54,14 @@ The tool intelligently maps results to ADO Test Cases:
 - **Clean Runs**: Creates, populates, and marks Test Runs as Complete automatically.
 
 ### 5. 🐛 Intelligent Defect Management
-- **Auto-Task Creation**: Creates a "Task" work item for failed tests.
+- **Auto-Task Creation**: Creates a "Task" or "Bug" work item for failed tests (Configurable).
 - **Duplicate Prevention**: If an open Task exists for a test, it appends a comment with the new failure details instead of creating a duplicate.
 - **Rich Context**: Links the Task to the Test Case (Related) and the Test Run (Hyperlink).
+- **Auto-Close on Pass**: When a previously failed test passes in a new run, automatically resolves/closes the associated Failure Task (Configurable).
+
+### 6. 🔗 Requirement Auto-Linking
+- **RTM Automation**: Parses Requirement IDs (e.g., `Story123`, `AB#456`) from test names or Gherkin tags.
+- **Traceability**: Links the Test Case to the Requirement (`Tests` / `Tested By` link) automatically.
 
 ---
 
@@ -64,19 +69,7 @@ The tool intelligently maps results to ADO Test Cases:
 
 To further enhance End-to-End Traceability and workflow automation, the following features are planned:
 
-1.  **🔄 Auto-Close on Pass**:
-    - *Logic*: When a previously failed test passes in a new run, automatically resolve/close the associated Failure Task.
-    - *Benefit*: Closes the defect loop without manual intervention.
-
-2.  **🐞 Configurable Defect Types**:
-    - *Logic*: Allow configuration to create "Bug" work items instead of "Task" (default).
-    - *Benefit*: Aligns with organizations that track test failures formally as Bugs.
-
-3.  **🔗 Requirement Auto-Linking**:
-    - *Logic*: Parse Requirement IDs (e.g., `Story123`, `AB#456`) from test names/tags and link the Test Case to the Requirement (`Tests` / `Tested By` link).
-    - *Benefit*: Automates the Requirement Traceability Matrix (RTM).
-
-4.  **📸 Artifact & Screenshot Support**:
+1.  **📸 Artifact & Screenshot Support**:
     - *Logic*: Support uploading individual test attachments (screenshots, logs) to the Test Result or Failure Task.
     - *Benefit*: drastically reduces debugging time.
 
@@ -118,6 +111,8 @@ ADO_PROJECT=MyProject
 ADO_TOKEN=your_pat_token
 # Optional Toggles
 CREATE_FAILURE_TASKS=true
+ADO_DEFECT_TYPE=Task # or Bug
+ADO_AUTO_CLOSE_ON_PASS=true
 ADO_FALLBACK_TO_NAME_SEARCH=false
 ADO_AUTO_CREATE_TEST_CASES=true
 ```
