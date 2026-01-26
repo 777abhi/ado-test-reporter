@@ -27,6 +27,9 @@ export class ConfigService implements IConfigService {
       true
     );
 
+    const defectType = process.env.ADO_DEFECT_TYPE || "Task";
+    const autoCloseOnPass = this.parseBoolean(process.env.ADO_AUTO_CLOSE_ON_PASS, false);
+
     const fallbackToNameSearch = this.parseBoolean(
       process.env.ADO_FALLBACK_TO_NAME_SEARCH,
       false
@@ -51,6 +54,8 @@ export class ConfigService implements IConfigService {
       buildId,
       buildNumber,
       createFailureTasks,
+      defectType,
+      autoCloseOnPass,
       fallbackToNameSearch,
       autoCreateTestCases,
       autoCreatePlan,

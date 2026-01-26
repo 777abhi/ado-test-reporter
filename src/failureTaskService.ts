@@ -12,7 +12,8 @@ export class FailureTaskService implements IFailureTaskService {
     private workItemApi: IWorkItemTrackingApi,
     private project: string,
     private orgUrl: string,
-    private logger: ILogger
+    private logger: ILogger,
+    private defectType: string = "Task"
   ) { }
 
   private async findExistingTask(testCaseId: string): Promise<number | null> {
@@ -22,9 +23,10 @@ export class FailureTaskService implements IFailureTaskService {
         FROM WorkItems
         WHERE
           [System.TeamProject] = @project
-          AND [System.WorkItemType] = 'Task'
+          AND [System.WorkItemType] = '${this.defectType}'
           AND [System.Title] CONTAINS '${testCaseId}'
           AND [System.State] <> 'Closed'
+          AND [System.State] <> 'Done'
         ORDER BY [System.ChangedDate] DESC
       `,
     };
@@ -99,11 +101,16 @@ export class FailureTaskService implements IFailureTaskService {
         : "<p>No error message provided.</p>",
     ].join("\n");
 
+    const descriptionField =
+      this.defectType.toLowerCase() === "bug"
+        ? "/fields/Microsoft.VSTS.TCM.ReproSteps"
+        : "/fields/System.Description";
+
     const patch: JsonPatchOperation[] = [
       { op: Operation.Add, path: "/fields/System.Title", value: title },
       { op: Operation.Add, path: "/fields/System.AreaPath", value: this.project },
       { op: Operation.Add, path: "/fields/System.IterationPath", value: this.project },
-      { op: Operation.Add, path: "/fields/System.Description", value: description },
+      { op: Operation.Add, path: descriptionField, value: description },
       { op: Operation.Add, path: "/fields/System.Tags", value: "AutomatedTestFailure" },
     ];
 
@@ -140,10 +147,10 @@ export class FailureTaskService implements IFailureTaskService {
     }
 
     const created = await this.workItemApi
-      .createWorkItem(undefined, patch, this.project, "Task")
+      .createWorkItem(undefined, patch, this.project, this.defectType)
       .catch((err) => {
         this.logger.error(
-          `❌ Failed to create task for ${failure.testName}:`,
+          `❌ Failed to create ${this.defectType} for ${failure.testName}:`,
           err?.message || err
         );
         return null;
@@ -156,6 +163,42 @@ export class FailureTaskService implements IFailureTaskService {
       return;
     }
 
-    this.logger.log(`📌 Created task ${created.id} for failed test ${failure.testName}`);
+    this.logger.log(`📌 Created ${this.defectType} ${created.id} for failed test ${failure.testName}`);
+  }
+
+  async resolveTaskForSuccess(testCaseId: string, buildNumber: string): Promise<void> {
+    const existingTaskId = await this.findExistingTask(testCaseId);
+    if (!existingTaskId) return;
+
+    const comment = `Test passed in build ${buildNumber}. Auto-closing defect.`;
+    const patch: JsonPatchOperation[] = [
+      {
+        op: Operation.Add,
+        path: "/fields/System.History",
+        value: comment,
+      },
+      {
+        op: Operation.Add,
+        path: "/fields/System.State",
+        value: "Closed",
+      },
+    ];
+
+    try {
+      await this.workItemApi.updateWorkItem(
+        undefined,
+        patch,
+        existingTaskId,
+        this.project
+      );
+      this.logger.log(
+        `✅ Auto-closed ${this.defectType} ${existingTaskId} because TC ${testCaseId} passed.`
+      );
+    } catch (e) {
+      this.logger.warn(
+        `⚠️ Failed to auto-close ${this.defectType} ${existingTaskId}:`,
+        (e as Error).message
+      );
+    }
   }
 }

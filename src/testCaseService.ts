@@ -3,6 +3,7 @@ import {
   JsonPatchOperation,
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
+import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
 import { ILogger } from "./interfaces/ILogger";
 
@@ -19,30 +20,42 @@ export class TestCaseService implements ITestCaseService {
   ) { }
 
   async resolve(testName: string, candidateId?: string | null): Promise<TestCaseInfo> {
-    const existingFromId = await this.tryGetExistingById(testName, candidateId);
-    if (existingFromId) return existingFromId;
+    let info: TestCaseInfo | null = null;
 
-    // Fallback: If ID lookup failed (or no ID), try searching by name if enabled.
-    if (this.fallbackToNameSearch) {
-      const existingByName = await this.findByName(testName);
-      if (existingByName) return existingByName;
+    const existingFromId = await this.tryGetExistingById(testName, candidateId);
+    if (existingFromId) {
+      info = existingFromId;
+    } else {
+      // Fallback: If ID lookup failed (or no ID), try searching by name if enabled.
+      if (this.fallbackToNameSearch) {
+        const existingByName = await this.findByName(testName);
+        if (existingByName) {
+          info = existingByName;
+        }
+      }
     }
 
-    if (this.byName.has(testName)) {
+    if (!info && this.byName.has(testName)) {
       const cached = this.byName.get(testName)!;
       this.logger.log(
         `ℹ️ Test Case "${testName}" already exists (ID: ${cached.id}); skipping creation.`
       );
-      return cached;
+      info = cached;
     }
 
-    if (!this.autoCreateTestCases) {
-      throw new Error(
-        `Test Case "${testName}" not found and auto-create is disabled (ADO_AUTO_CREATE_TEST_CASES=false).`
-      );
+    if (!info) {
+      if (!this.autoCreateTestCases) {
+        throw new Error(
+          `Test Case "${testName}" not found and auto-create is disabled (ADO_AUTO_CREATE_TEST_CASES=false).`
+        );
+      }
+      info = await this.createTestCase(testName);
     }
 
-    return this.createTestCase(testName);
+    // Attempt to link requirements parsed from the name
+    await this.linkRequirements(info.id, testName);
+
+    return info;
   }
 
   private async tryGetExistingById(
@@ -148,5 +161,86 @@ export class TestCaseService implements ITestCaseService {
     this.byName.set(testName, info);
     this.logger.log(`🆕 Created Test Case ${created.id} for "${testName}"`);
     return info;
+  }
+
+  private async linkRequirements(testCaseId: number, textToParse: string): Promise<void> {
+    // Regex to find Requirement IDs (e.g. Story123, AB#456, Requirement 789)
+    const reqRegex = /(?:Story|Requirement|Bug|Task|UserStory|Feature|Epic|Issue|AB#?)\s*(\d+)/ig;
+    const matches = Array.from(textToParse.matchAll(reqRegex));
+
+    if (matches.length === 0) return;
+
+    try {
+      // Check existing relations
+      const workItem = await this.workItemApi.getWorkItem(
+        testCaseId,
+        undefined,
+        undefined,
+        WorkItemExpand.Relations,
+        this.project
+      );
+
+      const existingUrls = new Set(
+        (workItem?.relations || []).map((r) => r.url)
+      );
+
+      const uniqueIds = new Set(matches.map((m) => m[1])); // Extract the ID group
+
+      for (const reqId of uniqueIds) {
+        // Assume reqId is a work item ID.
+        // Link type: Microsoft.VSTS.Common.TestedBy-Reverse (Test Case -> Tests -> Requirement)
+        // Or System.LinkTypes.Dependency
+        // The "Tests" link type is what connects TC to Story.
+        // It's often "Microsoft.VSTS.Common.TestedBy-Reverse".
+
+        // Need URL for the target work item
+        // We can construct it if we don't have it, but safest is to check if it exists?
+        // Actually, we can just construct the URL standard ADO format.
+        // But we need the org URL context. I don't have orgUrl here, only workItemApi and project.
+        // workItemApi has `serverUrl`.
+
+        // Actually, I can search for the work item to get its URL?
+        // Or I can use existingFromId logic?
+
+        // Wait, I don't have orgUrl stored in this service.
+        // But `this.workItemApi` is initialized with the server URL implicitly.
+        // However, constructing the URL for relation requires the full URL.
+        // Let's try to get the work item first to be safe and get its URL.
+
+        try {
+            const reqItem = await this.workItemApi.getWorkItem(parseInt(reqId, 10));
+            if (!reqItem || !reqItem.url) continue;
+
+            if (existingUrls.has(reqItem.url)) {
+                continue;
+            }
+
+            const patch: JsonPatchOperation[] = [
+                {
+                    op: Operation.Add,
+                    path: "/relations/-",
+                    value: {
+                        rel: "Microsoft.VSTS.Common.TestedBy-Reverse",
+                        url: reqItem.url,
+                        attributes: { comment: "Auto-linked from Test Name" },
+                    },
+                },
+            ];
+
+            await this.workItemApi.updateWorkItem(
+                undefined,
+                patch,
+                testCaseId,
+                this.project
+            );
+            this.logger.log(`🔗 Auto-linked TC ${testCaseId} to Requirement ${reqId}`);
+
+        } catch (e) {
+            this.logger.warn(`⚠️ Failed to link TC ${testCaseId} to Req ${reqId}: ${(e as Error).message}`);
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`⚠️ Error in linkRequirements for TC ${testCaseId}: ${(e as Error).message}`);
+    }
   }
 }

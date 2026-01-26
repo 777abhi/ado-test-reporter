@@ -6,6 +6,8 @@ export type AppEnv = {
     buildId: number;
     buildNumber: string;
     createFailureTasks: boolean;
+    defectType: string;
+    autoCloseOnPass: boolean;
     fallbackToNameSearch: boolean;
     autoCreateTestCases: boolean;
     autoCreatePlan: boolean;
