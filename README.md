@@ -69,16 +69,36 @@ The tool intelligently maps results to ADO Test Cases:
 
 To further enhance End-to-End Traceability and workflow automation, the following features are planned:
 
+### Phase 1: Deepening Technical Capabilities
 1.  **📸 Artifact & Screenshot Support**:
     - *Logic*: Support uploading individual test attachments (screenshots, logs) to the Test Result or Failure Task.
-    - *Benefit*: drastically reduces debugging time.
+    - *Benefit*: Drastically reduces debugging time.
 
-5.  **📉 Flaky Test Detection**:
+2.  **📉 Flaky Test Detection**:
     - *Logic*: Analyze historical outcome data before creating a failure task. If a test toggles frequently, tag it as "Flaky" instead of raising a critical defect.
     - *Benefit*: Reduces alert fatigue.
 
-6.  **🌍 Multi-Configuration Matrix**:
+3.  **🌍 Multi-Configuration Matrix**:
     - *Logic*: Enhanced mapping for executing the same test across multiple configurations (e.g., Browser=Chrome vs Edge) in a single run.
+
+### Phase 2: Enterprise Quality & Multi-Team Scaling
+To support uniform status reporting and quality engineering across the organization:
+
+4.  **🏢 Centralized Multi-Project Reporting**:
+    - *Logic*: Aggregates test run data from multiple ADO Projects into a single view.
+    - *Benefit*: Provides leadership with a unified quality dashboard across all product lines.
+
+5.  **📏 Standardized Quality Gates**:
+    - *Logic*: Configurable thresholds (e.g., "95% Pass Rate") applied uniformly across all teams' pipelines.
+    - *Benefit*: Enforces a consistent definition of "Done" for the organization.
+
+6.  **🤖 Team-Based Defect Routing**:
+    - *Logic*: Routes failure tasks to specific Area Paths/Teams based on feature file tags or folder paths.
+    - *Benefit*: Ensures defects automatically land in the correct team's backlog in shared repositories.
+
+7.  **📊 Historical Trend Export**:
+    - *Logic*: Exports long-term metrics (Pass Rate, Defect Density) for analysis in tools like PowerBI.
+    - *Benefit*: Identifies systemic quality issues and high-performing teams over time.
 
 ---
 
