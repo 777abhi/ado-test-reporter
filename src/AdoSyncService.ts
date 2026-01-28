@@ -1,20 +1,19 @@
 import { IWorkItemTrackingApi } from "azure-devops-node-api/WorkItemTrackingApi";
 import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { IAdoSyncService } from "./interfaces/IAdoSyncService";
-import { ParsedScenario, ParsedStep } from "./interfaces/IParsedScenario";
-
-interface AdoStep {
-    action: string;
-    expected: string;
-}
+import { ParsedScenario } from "./interfaces/IParsedScenario";
+import { IGherkinStepConverter } from "./interfaces/IGherkinStepConverter";
+import { escapeXml } from "./utils/XmlUtils";
 
 export class AdoSyncService implements IAdoSyncService {
     private witApi: IWorkItemTrackingApi;
     private project: string;
+    private stepConverter: IGherkinStepConverter;
 
-    constructor(witApi: IWorkItemTrackingApi, project: string) {
+    constructor(witApi: IWorkItemTrackingApi, project: string, stepConverter: IGherkinStepConverter) {
         this.witApi = witApi;
         this.project = project;
+        this.stepConverter = stepConverter;
     }
 
     public async updateTestCase(scenario: ParsedScenario): Promise<void> {
@@ -46,7 +45,7 @@ export class AdoSyncService implements IAdoSyncService {
                 throw err;
             }
 
-            const adoSteps = this.convertStepsToAdoFormat(scenario.steps);
+            const adoSteps = this.stepConverter.convert(scenario.steps);
             const tagsToSync = scenario.tags.filter(t => !t.startsWith('@TC_'));
 
             console.log(`  Found Scenario: ${scenario.name} -> ID: ${id} [Tags: ${tagsToSync.join(', ')}]`);
@@ -57,19 +56,19 @@ export class AdoSyncService implements IAdoSyncService {
                 const stepId = index + 1;
                 stepsXml += `
 <step id="${stepId}" type="ActionStep">
-    <parameterizedString isformatted="true">${this.escapeXml(step.action)}</parameterizedString>
-    <parameterizedString isformatted="true">${this.escapeXml(step.expected)}</parameterizedString>
+    <parameterizedString isformatted="true">${escapeXml(step.action)}</parameterizedString>
+    <parameterizedString isformatted="true">${escapeXml(step.expected)}</parameterizedString>
     <description/>
 </step>`;
             });
             stepsXml += '</steps>';
 
             const description = `
-                <strong>Feature:</strong> ${this.escapeXml(scenario.featureName)}<br/>
-                ${scenario.featureDescription ? `<p>${this.escapeXml(scenario.featureDescription)}</p>` : ''}
+                <strong>Feature:</strong> ${escapeXml(scenario.featureName)}<br/>
+                ${scenario.featureDescription ? `<p>${escapeXml(scenario.featureDescription)}</p>` : ''}
                 <br/>
-                <strong>Scenario:</strong> ${this.escapeXml(scenario.name)}<br/>
-                ${scenario.description ? `<p>${this.escapeXml(scenario.description)}</p>` : ''}
+                <strong>Scenario:</strong> ${escapeXml(scenario.name)}<br/>
+                ${scenario.description ? `<p>${escapeXml(scenario.description)}</p>` : ''}
             `;
 
             const patchDocument: any[] = [
@@ -126,55 +125,5 @@ export class AdoSyncService implements IAdoSyncService {
         } catch (error) {
             console.error(`    FAILED to update TC ${id}:`, error);
         }
-    }
-
-    private convertStepsToAdoFormat(gherkinSteps: ParsedStep[]): AdoStep[] {
-        const adoSteps: AdoStep[] = [];
-        let currentStep: AdoStep | null = null;
-
-        for (const step of gherkinSteps) {
-            const keyword = step.keyword.trim();
-            const text = step.text;
-
-            const isThen = keyword === 'Then';
-            const isContinuation = keyword === 'And' || keyword === 'But' || keyword === '*';
-
-            if (isThen) {
-                if (currentStep) {
-                     currentStep.expected = currentStep.expected ? `${currentStep.expected}<br/>${keyword} ${text}` : `${keyword} ${text}`;
-                } else {
-                     currentStep = { action: "Check Condition", expected: `${keyword} ${text}` };
-                     adoSteps.push(currentStep);
-                }
-            } else if (isContinuation) {
-                if (currentStep) {
-                    if (currentStep.expected) {
-                        currentStep.expected += `<br/>${keyword} ${text}`;
-                    } else {
-                        currentStep.action += `<br/>${keyword} ${text}`;
-                    }
-                } else {
-                     currentStep = { action: `${keyword} ${text}`, expected: "" };
-                     adoSteps.push(currentStep);
-                }
-            } else {
-                currentStep = { action: `${keyword} ${text}`, expected: "" };
-                adoSteps.push(currentStep);
-            }
-        }
-        return adoSteps;
-    }
-
-    private escapeXml(unsafe: string): string {
-        return unsafe.replace(/[<>&'"]/g, function (c) {
-            switch (c) {
-                case '<': return '&lt;';
-                case '>': return '&gt;';
-                case '&': return '&amp;';
-                case '\'': return '&apos;';
-                case '"': return '&quot;';
-            }
-            return c;
-        });
     }
 }

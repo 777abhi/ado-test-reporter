@@ -2,6 +2,7 @@ import { ConfigService } from '../config';
 import { AzureClientProvider } from '../AzureClientProvider';
 import { GherkinFeatureParser } from '../GherkinFeatureParser';
 import { AdoSyncService } from '../AdoSyncService';
+import { GherkinStepConverter } from '../GherkinStepConverter';
 
 async function main() {
     try {
@@ -16,7 +17,8 @@ async function main() {
 
         // 3. Services
         const parser = new GherkinFeatureParser();
-        const adoSyncService = new AdoSyncService(witApi, env.project);
+        const stepConverter = new GherkinStepConverter();
+        const adoSyncService = new AdoSyncService(witApi, env.project, stepConverter);
 
         // 4. Run
         const featuresPattern = 'features/**/*.feature';

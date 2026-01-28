@@ -8,6 +8,10 @@ import { IConfigService } from "./interfaces/IConfigService";
 import { IAzureClientProvider } from "./interfaces/IAzureClientProvider";
 import { ConsoleLogger } from "./ConsoleLogger";
 import { JUnitParser } from "./junitParser";
+import { TestCaseService } from "./testCaseService";
+import { TestPlanService } from "./testPlanService";
+import { FailureTaskService } from "./failureTaskService";
+import { RunOptions } from "./interfaces/RunOptions";
 
 async function run() {
   const defaultJUnit = path.resolve(process.cwd(), "src/results.xml");
@@ -42,12 +46,54 @@ async function run() {
 
   const configService: IConfigService = new ConfigService();
   const azureClientProvider: IAzureClientProvider = new AzureClientProvider();
+
+  const env = configService.loadEnvironment();
+  const args = configService.loadArgs(argv, defaultJUnit);
+
+  const clients = await azureClientProvider.createClients(env.token, env.orgUrl);
   const logger = new ConsoleLogger();
   const parser = new JUnitParser();
 
-  const app = new App(configService, azureClientProvider, parser, logger);
+  // Instantiate Services
+  const testCaseService = new TestCaseService(
+    clients.workItemApi,
+    env.project,
+    env.fallbackToNameSearch,
+    env.autoCreateTestCases,
+    logger
+  );
 
-  await app.run(argv, defaultJUnit);
+  const testPlanService = new TestPlanService(
+    clients.testApi,
+    clients.testPlanApi,
+    env.project,
+    env.orgUrl,
+    env.autoCreatePlan,
+    env.autoCreateSuite,
+    logger
+  );
+
+  const failureTaskService = new FailureTaskService(
+    clients.workItemApi,
+    env.project,
+    env.orgUrl,
+    logger,
+    env.defectType
+  );
+
+  const app = new App(testCaseService, testPlanService, failureTaskService, parser, logger);
+
+  const runOptions: RunOptions = {
+    planName: args.planName,
+    suiteName: args.suiteName,
+    buildId: env.buildId,
+    buildNumber: env.buildNumber,
+    attachResults: args.attachResults,
+    createFailureTasks: env.createFailureTasks,
+    autoCloseOnPass: env.autoCloseOnPass
+  };
+
+  await app.run(runOptions, args.junitFile);
 }
 
 run().catch((err) => {

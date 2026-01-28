@@ -1,74 +1,43 @@
-
-import { IConfigService } from "./interfaces/IConfigService";
-import { IAzureClientProvider } from "./interfaces/IAzureClientProvider";
 import { ITestCaseService } from "./interfaces/ITestCaseService";
 import { ITestPlanService } from "./interfaces/ITestPlanService";
 import { IFailureTaskService } from "./interfaces/IFailureTaskService";
 import { ILogger } from "./interfaces/ILogger";
 import { ITestResultParser } from "./interfaces/ITestResultParser";
 import { TestCaseResult } from "azure-devops-node-api/interfaces/TestInterfaces";
-import { TestCaseService } from "./testCaseService";
-import { TestPlanService } from "./testPlanService";
-import { FailureTaskService } from "./failureTaskService";
+import { RunOptions } from "./interfaces/RunOptions";
 
 // Regex to extract Test Case ID from test name (e.g. "UserLogin_TC1056")
 const TC_ID_REGEX = /TC(\d+)/i;
 
 export class App {
     constructor(
-        private configService: IConfigService,
-        private azureClientProvider: IAzureClientProvider,
+        private testCaseService: ITestCaseService,
+        private testPlanService: ITestPlanService,
+        private failureTaskService: IFailureTaskService,
         private parser: ITestResultParser,
         private logger: ILogger
     ) { }
 
-    async run(argv: any, defaultJUnit: string) {
-        const env = this.configService.loadEnvironment();
-        const args = this.configService.loadArgs(argv, defaultJUnit);
-        const clients = await this.azureClientProvider.createClients(env.token, env.orgUrl);
+    async run(options: RunOptions, junitFile: string) {
+        const { planName, suiteName, buildId, buildNumber, attachResults, createFailureTasks, autoCloseOnPass } = options;
 
         const actualPlanName =
-            args.planName.toLowerCase() === "auto-generate"
-                ? `AutoPlan-${env.buildNumber || new Date().toISOString().replace(/[:.]/g, "-")}`
-                : args.planName;
+            planName.toLowerCase() === "auto-generate"
+                ? `AutoPlan-${buildNumber || new Date().toISOString().replace(/[:.]/g, "-")}`
+                : planName;
         const actualSuiteName =
-            args.suiteName.toLowerCase() === "auto-generate"
-                ? `AutoSuite-${env.buildNumber || new Date().toISOString().replace(/[:.]/g, "-")}`
-                : args.suiteName;
+            suiteName.toLowerCase() === "auto-generate"
+                ? `AutoSuite-${buildNumber || new Date().toISOString().replace(/[:.]/g, "-")}`
+                : suiteName;
 
-        // Dependency Injection for Services
-        const testCaseService: ITestCaseService = new TestCaseService(
-            clients.workItemApi,
-            env.project,
-            env.fallbackToNameSearch,
-            env.autoCreateTestCases,
-            this.logger
-        );
-        const testPlanService: ITestPlanService = new TestPlanService(
-            clients.testApi,
-            clients.testPlanApi,
-            env.project,
-            env.orgUrl,
-            env.autoCreatePlan,
-            env.autoCreateSuite,
-            this.logger
-        );
-        const failureTaskService: IFailureTaskService = new FailureTaskService(
-            clients.workItemApi,
-            env.project,
-            env.orgUrl,
-            this.logger,
-            env.defectType
-        );
-
-        const planInfo = await testPlanService.ensurePlan(actualPlanName);
-        const suiteInfo = await testPlanService.ensureSuite(
+        const planInfo = await this.testPlanService.ensurePlan(actualPlanName);
+        const suiteInfo = await this.testPlanService.ensureSuite(
             planInfo.planId,
             planInfo.rootSuiteId,
             actualSuiteName
         );
 
-        const parsedCases = await this.parser.parse(args.junitFile);
+        const parsedCases = await this.parser.parse(junitFile);
         if (!parsedCases.length) {
             this.logger.log("No test cases found in the JUnit file; exiting.");
             return;
@@ -86,7 +55,7 @@ export class App {
 
         for (const tc of parsedCases) {
             const match = tc.name.match(TC_ID_REGEX);
-            const resolvedTestCase = await testCaseService.resolve(
+            const resolvedTestCase = await this.testCaseService.resolve(
                 tc.name,
                 match ? match[1] : null
             );
@@ -116,13 +85,13 @@ export class App {
             }
         }
 
-        await testPlanService.linkTestCasesToSuite(
+        await this.testPlanService.linkTestCasesToSuite(
             planInfo.planId,
             suiteInfo.suiteId,
             testCaseIdsToLink
         );
 
-        const pointIds = await testPlanService.mapPointsToResults(
+        const pointIds = await this.testPlanService.mapPointsToResults(
             planInfo.planId,
             suiteInfo.suiteId,
             resultsToPublish
@@ -152,23 +121,23 @@ export class App {
             `✅ Publishable results: ${publishableResults.length} (of ${resultsToPublish.length} processed).`
         );
 
-        const runInfo = await testPlanService.createRunAndPublish(
+        const runInfo = await this.testPlanService.createRunAndPublish(
             planInfo.planId,
             actualSuiteName,
-            env.buildId,
-            env.buildNumber,
+            buildId,
+            buildNumber,
             publishableResults,
             pointIds,
-            args.attachResults ? args.junitFile : undefined
+            attachResults ? junitFile : undefined
         );
 
-        if (env.createFailureTasks) {
+        if (createFailureTasks) {
             for (const failure of failedForTask) {
-                await failureTaskService.createTaskForFailure({
+                await this.failureTaskService.createTaskForFailure({
                     testCaseId: failure.testCaseId,
                     testName: failure.testName,
                     errorMessage: failure.errorMessage,
-                    buildNumber: env.buildNumber,
+                    buildNumber: buildNumber,
                     runUrl: runInfo.runUrl,
                     runId: runInfo.runId,
                 });
@@ -179,10 +148,10 @@ export class App {
             );
         }
 
-        if (env.autoCloseOnPass) {
+        if (autoCloseOnPass) {
             this.logger.log(`🔄 Auto-closing defects for ${passedTestCaseIds.length} passed tests...`);
             for (const tcId of passedTestCaseIds) {
-                await failureTaskService.resolveTaskForSuccess(tcId, env.buildNumber);
+                await this.failureTaskService.resolveTaskForSuccess(tcId, buildNumber);
             }
         }
     }
