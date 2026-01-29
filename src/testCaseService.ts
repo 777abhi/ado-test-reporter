@@ -58,6 +58,124 @@ export class TestCaseService implements ITestCaseService {
     return info;
   }
 
+  async getTestCase(id: number): Promise<TestCaseInfo | null> {
+    if (this.byId.has(id)) {
+      return this.byId.get(id)!;
+    }
+    try {
+      const existing = await this.workItemApi.getWorkItem(
+        id,
+        ["System.Title", "System.Rev"],
+        undefined,
+        undefined,
+        this.project
+      );
+      const info: TestCaseInfo = {
+        id: existing.id!,
+        revision: existing.rev ?? 1,
+        title: existing.fields?.["System.Title"] || "",
+      };
+      this.byId.set(id, info);
+      return info;
+    } catch (e) {
+      this.logger.warn(`⚠️ Test Case ${id} not found.`);
+      return null;
+    }
+  }
+
+  async updateTestCase(testCaseId: number, fields: Record<string, any>): Promise<void> {
+    const patch: JsonPatchOperation[] = Object.keys(fields).map((key) => ({
+      op: Operation.Add,
+      path: key.startsWith("/") ? key : `/fields/${key}`,
+      value: fields[key],
+    }));
+
+    try {
+      const updated = await this.workItemApi.updateWorkItem(
+        undefined,
+        patch,
+        testCaseId,
+        this.project
+      );
+      if (updated && updated.rev) {
+        // Update cache if exists
+        const cached = this.byId.get(testCaseId);
+        if (cached) {
+          cached.revision = updated.rev;
+        }
+      }
+      this.logger.log(`✅ Updated Test Case ${testCaseId} fields.`);
+    } catch (e) {
+      this.logger.error(`❌ Failed to update Test Case ${testCaseId}:`, (e as Error).message);
+      throw e;
+    }
+  }
+
+  async linkRequirementsById(testCaseId: number, requirementIds: number[]): Promise<void> {
+    if (requirementIds.length === 0) return;
+
+    try {
+      // Check existing relations
+      const workItem = await this.workItemApi.getWorkItem(
+        testCaseId,
+        undefined,
+        undefined,
+        WorkItemExpand.Relations,
+        this.project
+      );
+
+      const existingUrls = new Set(
+        (workItem?.relations || []).map((r) => r.url)
+      );
+
+      const uniqueIds = [...new Set(requirementIds)];
+
+      // Fetch all requirements in parallel to get their URLs
+      const reqItems = await Promise.all(
+        uniqueIds.map((id) =>
+          this.workItemApi.getWorkItem(id).catch((e) => {
+            this.logger.warn(`⚠️ Failed to fetch Req ${id}: ${(e as Error).message}`);
+            return null;
+          })
+        )
+      );
+
+      const patch: JsonPatchOperation[] = [];
+
+      for (const reqItem of reqItems) {
+        if (!reqItem || !reqItem.url) continue;
+        if (existingUrls.has(reqItem.url)) continue;
+
+        patch.push({
+          op: Operation.Add,
+          path: "/relations/-",
+          value: {
+            rel: "Microsoft.VSTS.Common.TestedBy-Reverse",
+            url: reqItem.url,
+            attributes: { comment: "Auto-linked" },
+          },
+        });
+        existingUrls.add(reqItem.url);
+      }
+
+      if (patch.length > 0) {
+        await this.workItemApi.updateWorkItem(
+          undefined,
+          patch,
+          testCaseId,
+          this.project
+        );
+        this.logger.log(
+          `🔗 Linked TC ${testCaseId} to Requirements: ${uniqueIds.join(", ")}`
+        );
+      }
+    } catch (e) {
+      this.logger.warn(
+        `⚠️ Error in linkRequirementsById for TC ${testCaseId}: ${(e as Error).message}`
+      );
+    }
+  }
+
   private async tryGetExistingById(
     testName: string,
     candidateId?: string | null
@@ -68,6 +186,10 @@ export class TestCaseService implements ITestCaseService {
       this.logger.warn(`⚠️ Invalid Test Case ID provided: "${candidateId}"; ignoring.`);
       return null;
     }
+
+    // Reuse getTestCase if possible, but here we are resolving by ID AND setting the Name map.
+    // getTestCase just gets by ID.
+    // Let's stick to existing logic to handle name mapping too.
 
     if (this.byId.has(parsedId)) {
       const cached = this.byId.get(parsedId)!;
@@ -109,8 +231,6 @@ export class TestCaseService implements ITestCaseService {
       if (result.workItems && result.workItems.length > 0) {
         const firstMatch = result.workItems[0];
         if (firstMatch.id) {
-          // Fetch full item to get revision? unique query doesn't give rev usually unless specified
-          // Actually getWorkItem usually needed to get current rev reliably if not in query results
           const existing = await this.workItemApi.getWorkItem(
             firstMatch.id,
             ["System.Title", "System.Rev"]
@@ -170,77 +290,7 @@ export class TestCaseService implements ITestCaseService {
 
     if (matches.length === 0) return;
 
-    try {
-      // Check existing relations
-      const workItem = await this.workItemApi.getWorkItem(
-        testCaseId,
-        undefined,
-        undefined,
-        WorkItemExpand.Relations,
-        this.project
-      );
-
-      const existingUrls = new Set(
-        (workItem?.relations || []).map((r) => r.url)
-      );
-
-      const uniqueIds = new Set(matches.map((m) => m[1])); // Extract the ID group
-
-      for (const reqId of uniqueIds) {
-        // Assume reqId is a work item ID.
-        // Link type: Microsoft.VSTS.Common.TestedBy-Reverse (Test Case -> Tests -> Requirement)
-        // Or System.LinkTypes.Dependency
-        // The "Tests" link type is what connects TC to Story.
-        // It's often "Microsoft.VSTS.Common.TestedBy-Reverse".
-
-        // Need URL for the target work item
-        // We can construct it if we don't have it, but safest is to check if it exists?
-        // Actually, we can just construct the URL standard ADO format.
-        // But we need the org URL context. I don't have orgUrl here, only workItemApi and project.
-        // workItemApi has `serverUrl`.
-
-        // Actually, I can search for the work item to get its URL?
-        // Or I can use existingFromId logic?
-
-        // Wait, I don't have orgUrl stored in this service.
-        // But `this.workItemApi` is initialized with the server URL implicitly.
-        // However, constructing the URL for relation requires the full URL.
-        // Let's try to get the work item first to be safe and get its URL.
-
-        try {
-            const reqItem = await this.workItemApi.getWorkItem(parseInt(reqId, 10));
-            if (!reqItem || !reqItem.url) continue;
-
-            if (existingUrls.has(reqItem.url)) {
-                continue;
-            }
-
-            const patch: JsonPatchOperation[] = [
-                {
-                    op: Operation.Add,
-                    path: "/relations/-",
-                    value: {
-                        rel: "Microsoft.VSTS.Common.TestedBy-Reverse",
-                        url: reqItem.url,
-                        attributes: { comment: "Auto-linked from Test Name" },
-                    },
-                },
-            ];
-
-            await this.workItemApi.updateWorkItem(
-                undefined,
-                patch,
-                testCaseId,
-                this.project
-            );
-            this.logger.log(`🔗 Auto-linked TC ${testCaseId} to Requirement ${reqId}`);
-
-        } catch (e) {
-            this.logger.warn(`⚠️ Failed to link TC ${testCaseId} to Req ${reqId}: ${(e as Error).message}`);
-        }
-      }
-    } catch (e) {
-      this.logger.warn(`⚠️ Error in linkRequirements for TC ${testCaseId}: ${(e as Error).message}`);
-    }
+    const ids = matches.map((m) => parseInt(m[1], 10)).filter(id => !isNaN(id));
+    await this.linkRequirementsById(testCaseId, ids);
   }
 }
