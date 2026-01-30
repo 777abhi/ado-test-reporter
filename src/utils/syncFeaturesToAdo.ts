@@ -3,6 +3,8 @@ import { AzureClientProvider } from '../AzureClientProvider';
 import { GherkinFeatureParser } from '../GherkinFeatureParser';
 import { AdoSyncService } from '../AdoSyncService';
 import { GherkinStepConverter } from '../GherkinStepConverter';
+import { TestCaseService } from '../testCaseService';
+import { ConsoleLogger } from '../ConsoleLogger';
 
 async function main() {
     try {
@@ -16,9 +18,20 @@ async function main() {
         const witApi = clients.workItemApi;
 
         // 3. Services
+        const logger = new ConsoleLogger();
         const parser = new GherkinFeatureParser();
         const stepConverter = new GherkinStepConverter();
-        const adoSyncService = new AdoSyncService(witApi, env.project, stepConverter);
+
+        // Instantiate TestCaseService
+        const testCaseService = new TestCaseService(
+            witApi,
+            env.project,
+            env.fallbackToNameSearch,
+            env.autoCreateTestCases,
+            logger
+        );
+
+        const adoSyncService = new AdoSyncService(testCaseService, stepConverter);
 
         // 4. Run
         const featuresPattern = 'features/**/*.feature';

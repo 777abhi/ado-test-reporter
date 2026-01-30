@@ -1,18 +1,15 @@
-import { IWorkItemTrackingApi } from "azure-devops-node-api/WorkItemTrackingApi";
-import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { IAdoSyncService } from "./interfaces/IAdoSyncService";
 import { ParsedScenario } from "./interfaces/IParsedScenario";
 import { IGherkinStepConverter } from "./interfaces/IGherkinStepConverter";
+import { ITestCaseService } from "./interfaces/ITestCaseService";
 import { escapeXml } from "./utils/XmlUtils";
 
 export class AdoSyncService implements IAdoSyncService {
-    private witApi: IWorkItemTrackingApi;
-    private project: string;
+    private testCaseService: ITestCaseService;
     private stepConverter: IGherkinStepConverter;
 
-    constructor(witApi: IWorkItemTrackingApi, project: string, stepConverter: IGherkinStepConverter) {
-        this.witApi = witApi;
-        this.project = project;
+    constructor(testCaseService: ITestCaseService, stepConverter: IGherkinStepConverter) {
+        this.testCaseService = testCaseService;
         this.stepConverter = stepConverter;
     }
 
@@ -26,23 +23,10 @@ export class AdoSyncService implements IAdoSyncService {
 
         try {
             // Check if exists
-            let existingRelations: string[] = [];
-            try {
-                // Fetch with relations to check existing links
-                const item = await this.witApi.getWorkItem(id, undefined, undefined, WorkItemExpand.Relations);
-                if (!item) {
-                     console.warn(`    WARNING: Test Case ${id} not found (getWorkItem returned null). Skipping.`);
-                     return;
-                }
-                if (item.relations) {
-                    existingRelations = item.relations.map(r => r.url).filter(u => !!u) as string[];
-                }
-            } catch (err: any) {
-                if (err.statusCode === 404 || err.status === 404 || (err.message && err.message.includes('404'))) {
-                    console.warn(`    WARNING: Test Case ${id} does not exist in ADO (404). Skipping.`);
-                    return;
-                }
-                throw err;
+            const existing = await this.testCaseService.getTestCase(id);
+            if (!existing) {
+                console.warn(`    WARNING: Test Case ${id} not found or inaccessible. Skipping.`);
+                return;
             }
 
             const adoSteps = this.stepConverter.convert(scenario.steps);
@@ -71,55 +55,34 @@ export class AdoSyncService implements IAdoSyncService {
                 ${scenario.description ? `<p>${escapeXml(scenario.description)}</p>` : ''}
             `;
 
-            const patchDocument: any[] = [
-                {
-                    op: "add",
-                    path: "/fields/Microsoft.VSTS.TCM.Steps",
-                    value: stepsXml
-                },
-                {
-                    op: "add",
-                    path: "/fields/System.Tags",
-                    value: tagsToSync.join("; ")
-                },
-                {
-                    op: "add",
-                    path: "/fields/System.Description",
-                    value: description
-                }
-            ];
+            const fields: Record<string, any> = {
+                "Microsoft.VSTS.TCM.Steps": stepsXml,
+                "System.Tags": tagsToSync.join("; "),
+                "System.Description": description
+            };
+
+            await this.testCaseService.updateTestCase(id, fields);
 
             // Auto-link requirements from tags (e.g. @Story_123, @AB#123)
             const reqRegex = /@(?:Story|Requirement|Bug|Task|UserStory|Feature|Epic|Issue|AB#?)_?(\d+)/i;
             const reqTags = scenario.tags.filter(t => reqRegex.test(t));
+            const reqIds: number[] = [];
 
             for (const tag of reqTags) {
                 const match = tag.match(reqRegex);
                 if (match) {
                     const reqId = parseInt(match[1], 10);
-                    try {
-                        const reqItem = await this.witApi.getWorkItem(reqId);
-                        if (reqItem && reqItem.url && !existingRelations.includes(reqItem.url)) {
-                             patchDocument.push({
-                                op: "add",
-                                path: "/relations/-",
-                                value: {
-                                    rel: "Microsoft.VSTS.Common.TestedBy-Reverse",
-                                    url: reqItem.url,
-                                    attributes: { comment: "Auto-linked from Gherkin Tag" }
-                                }
-                            });
-                            console.log(`    Planning to link TC ${id} to Requirement ${reqId}`);
-                            existingRelations.push(reqItem.url); // prevent duplicate in this batch
-                        }
-                    } catch (e) {
-                        console.warn(`    WARNING: Could not link tag ${tag} to a work item: ${(e as Error).message}`);
+                    if (!isNaN(reqId)) {
+                        reqIds.push(reqId);
                     }
                 }
             }
 
-            // @ts-ignore - updateWorkItem signature might vary, matching original code usage
-            await this.witApi.updateWorkItem(null, patchDocument, id);
+            if (reqIds.length > 0) {
+                console.log(`    Planning to link TC ${id} to Requirements: ${reqIds.join(', ')}`);
+                await this.testCaseService.linkRequirementsById(id, reqIds);
+            }
+
             console.log(`    SUCCESS: Updated TC ${id} steps, tags, fields, and links.`);
 
         } catch (error) {
