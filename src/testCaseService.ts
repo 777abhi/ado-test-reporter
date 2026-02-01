@@ -6,6 +6,7 @@ import {
 import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
 import { ILogger } from "./interfaces/ILogger";
+import { escapeWiqlString } from "./utils/WiqlUtils";
 
 export class TestCaseService implements ITestCaseService {
   private byId = new Map<number, TestCaseInfo>();
@@ -224,7 +225,9 @@ export class TestCaseService implements ITestCaseService {
 
   private async findByName(testName: string): Promise<TestCaseInfo | null> {
     this.logger.log(`🔍 Searching for Test Case by name: "${testName}"`);
-    const wiql = `SELECT [System.Id], [System.Rev], [System.Title] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND [System.WorkItemType] = 'Test Case' AND [System.Title] = '${testName}'`;
+    const escapedProject = escapeWiqlString(this.project);
+    const escapedTestName = escapeWiqlString(testName);
+    const wiql = `SELECT [System.Id], [System.Rev], [System.Title] FROM WorkItems WHERE [System.TeamProject] = '${escapedProject}' AND [System.WorkItemType] = 'Test Case' AND [System.Title] = '${escapedTestName}'`;
 
     try {
       const result = await this.workItemApi.queryByWiql({ query: wiql });
