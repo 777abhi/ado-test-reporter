@@ -6,6 +6,7 @@ import {
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
 import { Wiql } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
+import { escapeWiqlString } from "./utils/WiqlUtils";
 
 export class FailureTaskService implements IFailureTaskService {
   constructor(
@@ -17,14 +18,17 @@ export class FailureTaskService implements IFailureTaskService {
   ) { }
 
   private async findExistingTask(testCaseId: string): Promise<number | null> {
+    const escapedDefectType = escapeWiqlString(this.defectType);
+    const escapedTestCaseId = escapeWiqlString(testCaseId);
+
     const wiql: Wiql = {
       query: `
         SELECT [System.Id]
         FROM WorkItems
         WHERE
           [System.TeamProject] = @project
-          AND [System.WorkItemType] = '${this.defectType}'
-          AND [System.Title] CONTAINS '${testCaseId}'
+          AND [System.WorkItemType] = '${escapedDefectType}'
+          AND [System.Title] CONTAINS '${escapedTestCaseId}'
           AND [System.State] <> 'Closed'
           AND [System.State] <> 'Done'
         ORDER BY [System.ChangedDate] DESC
