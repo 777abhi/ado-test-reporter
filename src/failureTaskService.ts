@@ -7,6 +7,7 @@ import {
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
 import { Wiql } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { escapeWiqlString } from "./utils/WiqlUtils";
+import { escapeXml } from "./utils/XmlUtils";
 
 export class FailureTaskService implements IFailureTaskService {
   constructor(
@@ -97,11 +98,12 @@ export class FailureTaskService implements IFailureTaskService {
     }
 
     const title = `[Auto] Investigate: ${failure.testName} (TC ${failure.testCaseId})`;
+    // Sentinel: Sanitize inputs to prevent Stored XSS in Work Item description
     const description = [
-      `<p>Test failed in build <b>${failure.buildNumber}</b></p>`,
-      `<p>Test Case ID: ${failure.testCaseId}</p>`,
+      `<p>Test failed in build <b>${escapeXml(failure.buildNumber)}</b></p>`,
+      `<p>Test Case ID: ${escapeXml(failure.testCaseId)}</p>`,
       failure.errorMessage
-        ? `<pre>${failure.errorMessage}</pre>`
+        ? `<pre>${escapeXml(failure.errorMessage)}</pre>`
         : "<p>No error message provided.</p>",
     ].join("\n");
 
