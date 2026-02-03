@@ -84,10 +84,12 @@ export class FailureTaskService implements IFailureTaskService {
   async createTaskForFailure(failure: FailureInfo): Promise<void> {
     const existingTaskId = await this.findExistingTask(failure.testCaseId);
     const comment = [
-      `Test failed in build ${failure.buildNumber}`,
-      failure.errorMessage ? `Error: ${failure.errorMessage}` : "No error details.",
-      `Run: ${failure.runUrl}`,
-    ].join("\n");
+      `Test failed in build ${escapeXml(failure.buildNumber)}`,
+      failure.errorMessage
+        ? `Error: <pre>${escapeXml(failure.errorMessage)}</pre>`
+        : "No error details.",
+      `Run: ${escapeXml(failure.runUrl)}`,
+    ].join("<br>");
 
     if (existingTaskId) {
       this.logger.log(
@@ -176,7 +178,7 @@ export class FailureTaskService implements IFailureTaskService {
     const existingTaskId = await this.findExistingTask(testCaseId);
     if (!existingTaskId) return;
 
-    const comment = `Test passed in build ${buildNumber}. Auto-closing defect.`;
+    const comment = `Test passed in build ${escapeXml(buildNumber)}. Auto-closing defect.`;
     const patch: JsonPatchOperation[] = [
       {
         op: Operation.Add,
