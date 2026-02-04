@@ -1,6 +1,7 @@
 import { IGherkinStepConverter } from "./interfaces/IGherkinStepConverter";
 import { ParsedStep } from "./interfaces/IParsedScenario";
 import { IAdoStep } from "./interfaces/IAdoStep";
+import { escapeXml } from "./utils/XmlUtils";
 
 export class GherkinStepConverter implements IGherkinStepConverter {
     public convert(gherkinSteps: ParsedStep[]): IAdoStep[] {
@@ -8,11 +9,12 @@ export class GherkinStepConverter implements IGherkinStepConverter {
         let currentStep: IAdoStep | null = null;
 
         for (const step of gherkinSteps) {
-            const keyword = step.keyword.trim();
-            const text = step.text;
+            const rawKeyword = step.keyword.trim();
+            const keyword = escapeXml(rawKeyword);
+            const text = escapeXml(step.text);
 
-            const isThen = keyword === 'Then';
-            const isContinuation = keyword === 'And' || keyword === 'But' || keyword === '*';
+            const isThen = rawKeyword === 'Then';
+            const isContinuation = rawKeyword === 'And' || rawKeyword === 'But' || rawKeyword === '*';
 
             if (isThen) {
                 if (currentStep) {
