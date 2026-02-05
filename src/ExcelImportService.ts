@@ -4,8 +4,17 @@ import { ITestCaseService } from './interfaces/ITestCaseService';
 import { ITestPlanService } from './interfaces/ITestPlanService';
 import { ILogger } from './interfaces/ILogger';
 import { IExcelParser } from './interfaces/IExcelParser';
+import { escapeXml } from './utils/XmlUtils';
 
 export class ExcelImportService implements IExcelImportService {
+    private readonly htmlFields = new Set([
+        "System.Description",
+        "System.History",
+        "Microsoft.VSTS.TCM.ReproSteps",
+        "Microsoft.VSTS.TCM.Steps",
+        "Microsoft.VSTS.Common.AcceptanceCriteria"
+    ]);
+
     constructor(
         private testCaseService: ITestCaseService,
         private testPlanService: ITestPlanService,
@@ -86,7 +95,11 @@ export class ExcelImportService implements IExcelImportService {
                 if (adoField === "System.Id") continue; // Don't update ID field directly via generic update
 
                 if (row[excelCol] !== undefined) {
-                    fields[adoField] = row[excelCol];
+                    let value = row[excelCol];
+                    if (this.htmlFields.has(adoField) && typeof value === 'string') {
+                        value = escapeXml(value);
+                    }
+                    fields[adoField] = value;
                 }
             }
 

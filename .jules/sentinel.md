@@ -17,3 +17,8 @@
 **Vulnerability:** Gherkin step text was interpolated directly into Azure DevOps Test Case "Steps" field (HTML) in `GherkinStepConverter.ts`.
 **Learning:** Even content from version-controlled feature files can be a vector for Stored XSS if those files are processed and synced to rich-text fields in external systems.
 **Prevention:** Use `src/utils/XmlUtils.ts` -> `escapeXml()` for Gherkin step text and keywords.
+
+## 2026-10-27 - Stored XSS in Excel Import
+**Vulnerability:** Excel Import allowed mapping arbitrary columns to HTML-rich fields (e.g., `System.Description`) without sanitization. Malicious Excel files could inject scripts.
+**Learning:** Data from file imports must be treated as untrusted user input, especially when mapped to rich-text fields in external systems.
+**Prevention:** Explicitly sanitized known HTML fields in `ExcelImportService.ts` using `escapeXml()`.
