@@ -41,6 +41,11 @@ export class ConfigService implements IConfigService {
     const autoCreatePlan = this.parseBoolean(process.env.ADO_AUTO_CREATE_PLAN, true);
     const autoCreateSuite = this.parseBoolean(process.env.ADO_AUTO_CREATE_SUITE, true);
 
+    const htmlFields = (process.env.ADO_HTML_FIELDS || "")
+      .split(",")
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0);
+
     if (!token || !orgUrl || !project) {
       throw new Error(
         "Missing required environment variables (token/orgUrl/project). Provide SYSTEM_* values in pipeline or set ADO_TOKEN, ADO_ORG_URL, ADO_PROJECT locally."
@@ -60,6 +65,7 @@ export class ConfigService implements IConfigService {
       autoCreateTestCases,
       autoCreatePlan,
       autoCreateSuite,
+      htmlFields,
     };
   }
 

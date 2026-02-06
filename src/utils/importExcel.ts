@@ -65,7 +65,13 @@ async function main() {
   );
 
   const parser = new ExcelParser();
-  const excelImportService = new ExcelImportService(testCaseService, testPlanService, logger, parser);
+  const excelImportService = new ExcelImportService(
+    testCaseService,
+    testPlanService,
+    logger,
+    parser,
+    env.htmlFields
+  );
 
   try {
       await excelImportService.importTestCases(

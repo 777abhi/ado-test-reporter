@@ -19,8 +19,13 @@ export class ExcelImportService implements IExcelImportService {
         private testCaseService: ITestCaseService,
         private testPlanService: ITestPlanService,
         private logger: ILogger,
-        private parser: IExcelParser
-    ) { }
+        private parser: IExcelParser,
+        additionalHtmlFields: string[] = []
+    ) {
+        if (additionalHtmlFields) {
+            additionalHtmlFields.forEach((f) => this.htmlFields.add(f));
+        }
+    }
 
     public async importTestCases(
         filePath: string,

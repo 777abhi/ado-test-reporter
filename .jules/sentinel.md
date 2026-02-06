@@ -22,3 +22,8 @@
 **Vulnerability:** Excel Import allowed mapping arbitrary columns to HTML-rich fields (e.g., `System.Description`) without sanitization. Malicious Excel files could inject scripts.
 **Learning:** Data from file imports must be treated as untrusted user input, especially when mapped to rich-text fields in external systems.
 **Prevention:** Explicitly sanitized known HTML fields in `ExcelImportService.ts` using `escapeXml()`.
+
+## 2026-10-28 - Unsanitized Custom HTML Fields in Excel Import
+**Vulnerability:** Users could map Excel columns to custom fields (e.g., `Custom.MyHtmlField`) which were not in the hardcoded allowlist for sanitization, bypassing Stored XSS protection.
+**Learning:** Hardcoded security allowlists often fail to account for user extensibility (custom fields). Configuration-driven security policies are more robust.
+**Prevention:** Added `ADO_HTML_FIELDS` configuration to allow users to specify additional fields that require sanitization.

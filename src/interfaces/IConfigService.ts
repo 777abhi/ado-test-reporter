@@ -12,6 +12,7 @@ export type AppEnv = {
     autoCreateTestCases: boolean;
     autoCreatePlan: boolean;
     autoCreateSuite: boolean;
+    htmlFields: string[];
 };
 
 export type AppArgs = {
