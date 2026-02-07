@@ -7,6 +7,7 @@ import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackin
 import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
 import { ILogger } from "./interfaces/ILogger";
 import { escapeWiqlString } from "./utils/WiqlUtils";
+import { sanitizeForCsv } from "./utils/CsvUtils";
 
 export class TestCaseService implements ITestCaseService {
   private byId = new Map<number, TestCaseInfo>();
@@ -85,6 +86,15 @@ export class TestCaseService implements ITestCaseService {
   }
 
   async updateTestCase(testCaseId: number, fields: Record<string, any>): Promise<void> {
+    // Sentinel: Sanitize Title for CSV/Formula Injection
+    if (fields["System.Title"] && typeof fields["System.Title"] === 'string') {
+        fields["System.Title"] = sanitizeForCsv(fields["System.Title"]);
+    }
+    // Also handle if passed as /fields/System.Title
+    if (fields["/fields/System.Title"] && typeof fields["/fields/System.Title"] === 'string') {
+        fields["/fields/System.Title"] = sanitizeForCsv(fields["/fields/System.Title"]);
+    }
+
     const patch: JsonPatchOperation[] = Object.keys(fields).map((key) => ({
       op: Operation.Add,
       path: key.startsWith("/") ? key : `/fields/${key}`,
@@ -227,11 +237,23 @@ export class TestCaseService implements ITestCaseService {
     this.logger.log(`🔍 Searching for Test Case by name: "${testName}"`);
     const escapedProject = escapeWiqlString(this.project);
     const escapedTestName = escapeWiqlString(testName);
-    const wiql = `SELECT [System.Id], [System.Rev], [System.Title] FROM WorkItems WHERE [System.TeamProject] = '${escapedProject}' AND [System.WorkItemType] = 'Test Case' AND [System.Title] = '${escapedTestName}'`;
+
+    // Sentinel: Search for both original and sanitized name to prevent duplicates
+    const sanitized = sanitizeForCsv(testName);
+    let whereClause = `[System.Title] = '${escapedTestName}'`;
+
+    if (sanitized !== testName) {
+        const escapedSanitized = escapeWiqlString(sanitized);
+        whereClause = `(${whereClause} OR [System.Title] = '${escapedSanitized}')`;
+        this.logger.log(`🔍 Including sanitized search: "${sanitized}"`);
+    }
+
+    const wiql = `SELECT [System.Id], [System.Rev], [System.Title] FROM WorkItems WHERE [System.TeamProject] = '${escapedProject}' AND [System.WorkItemType] = 'Test Case' AND ${whereClause}`;
 
     try {
       const result = await this.workItemApi.queryByWiql({ query: wiql });
       if (result.workItems && result.workItems.length > 0) {
+        // Return first match (preference could be given to exact match, but usually implies one exists)
         const firstMatch = result.workItems[0];
         if (firstMatch.id) {
           const existing = await this.workItemApi.getWorkItem(
@@ -258,8 +280,14 @@ export class TestCaseService implements ITestCaseService {
   }
 
   private async createTestCase(testName: string): Promise<TestCaseInfo> {
+    // Sentinel: Sanitize Title for CSV/Formula Injection
+    const titleToUse = sanitizeForCsv(testName);
+    if (titleToUse !== testName) {
+        this.logger.log(`🛡️ Sanitizing Test Case Title for creation: "${testName}" -> "${titleToUse}"`);
+    }
+
     const patchDocument: JsonPatchOperation[] = [
-      { op: Operation.Add, path: "/fields/System.Title", value: testName },
+      { op: Operation.Add, path: "/fields/System.Title", value: titleToUse },
       { op: Operation.Add, path: "/fields/System.AreaPath", value: this.project },
       { op: Operation.Add, path: "/fields/System.IterationPath", value: this.project },
     ];
@@ -278,22 +306,29 @@ export class TestCaseService implements ITestCaseService {
     const info: TestCaseInfo = {
       id: created.id,
       revision: created.rev ?? 1,
-      title: testName,
+      title: titleToUse,
     };
     this.byId.set(created.id, info);
-    this.byName.set(testName, info);
-    this.logger.log(`🆕 Created Test Case ${created.id} for "${testName}"`);
+    this.byName.set(testName, info); // Cache with original name so we don't recreate
+    this.logger.log(`🆕 Created Test Case ${created.id} for "${testName}" (Title: ${titleToUse})`);
     return info;
   }
 
   private async linkRequirements(testCaseId: number, textToParse: string): Promise<void> {
     // Regex to find Requirement IDs (e.g. Story123, AB#456, Requirement 789)
     const reqRegex = /(?:Story|Requirement|Bug|Task|UserStory|Feature|Epic|Issue|AB#?)\s*(\d+)/ig;
-    const matches = Array.from(textToParse.matchAll(reqRegex));
+    const ids: number[] = [];
+    let match: RegExpExecArray | null;
 
-    if (matches.length === 0) return;
+    while ((match = reqRegex.exec(textToParse)) !== null) {
+        const id = parseInt(match[1], 10);
+        if (!isNaN(id)) {
+            ids.push(id);
+        }
+    }
 
-    const ids = matches.map((m) => parseInt(m[1], 10)).filter(id => !isNaN(id));
+    if (ids.length === 0) return;
+
     await this.linkRequirementsById(testCaseId, ids);
   }
 }

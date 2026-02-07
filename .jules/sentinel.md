@@ -27,3 +27,8 @@
 **Vulnerability:** Users could map Excel columns to custom fields (e.g., `Custom.MyHtmlField`) which were not in the hardcoded allowlist for sanitization, bypassing Stored XSS protection.
 **Learning:** Hardcoded security allowlists often fail to account for user extensibility (custom fields). Configuration-driven security policies are more robust.
 **Prevention:** Added `ADO_HTML_FIELDS` configuration to allow users to specify additional fields that require sanitization.
+
+## 2026-02-07 - CSV Injection (Formula Injection)
+**Vulnerability:** Test Case titles or other fields starting with `=`, `+`, or `@` could be interpreted as formulas when exported to Excel.
+**Learning:** Tools that sync data to systems (like ADO) which are frequently exported to Excel must treat data as potential CSV/Formula injection vectors.
+**Prevention:** Created `src/utils/CsvUtils.ts` -> `sanitizeForCsv()` to prepend `'` to unsafe prefixes. Applied in `TestCaseService` (Title) and `ExcelImportService` (All fields). Excluded `-` to avoid breaking bullet points.

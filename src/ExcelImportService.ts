@@ -5,6 +5,7 @@ import { ITestPlanService } from './interfaces/ITestPlanService';
 import { ILogger } from './interfaces/ILogger';
 import { IExcelParser } from './interfaces/IExcelParser';
 import { escapeXml } from './utils/XmlUtils';
+import { sanitizeForCsv } from './utils/CsvUtils';
 
 export class ExcelImportService implements IExcelImportService {
     private readonly htmlFields = new Set([
@@ -101,6 +102,12 @@ export class ExcelImportService implements IExcelImportService {
 
                 if (row[excelCol] !== undefined) {
                     let value = row[excelCol];
+
+                    // Sentinel: Sanitize for CSV/Formula Injection (e.g. fields starting with =)
+                    if (typeof value === 'string') {
+                        value = sanitizeForCsv(value);
+                    }
+
                     if (this.htmlFields.has(adoField) && typeof value === 'string') {
                         value = escapeXml(value);
                     }
