@@ -95,6 +95,14 @@ export class TestCaseService implements ITestCaseService {
         fields["/fields/System.Title"] = sanitizeForCsv(fields["/fields/System.Title"]);
     }
 
+    // Sentinel: Sanitize Tags for CSV/Formula Injection
+    if (fields["System.Tags"] && typeof fields["System.Tags"] === 'string') {
+        fields["System.Tags"] = sanitizeForCsv(fields["System.Tags"]);
+    }
+    if (fields["/fields/System.Tags"] && typeof fields["/fields/System.Tags"] === 'string') {
+        fields["/fields/System.Tags"] = sanitizeForCsv(fields["/fields/System.Tags"]);
+    }
+
     const patch: JsonPatchOperation[] = Object.keys(fields).map((key) => ({
       op: Operation.Add,
       path: key.startsWith("/") ? key : `/fields/${key}`,

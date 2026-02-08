@@ -32,3 +32,8 @@
 **Vulnerability:** Test Case titles or other fields starting with `=`, `+`, or `@` could be interpreted as formulas when exported to Excel.
 **Learning:** Tools that sync data to systems (like ADO) which are frequently exported to Excel must treat data as potential CSV/Formula injection vectors.
 **Prevention:** Created `src/utils/CsvUtils.ts` -> `sanitizeForCsv()` to prepend `'` to unsafe prefixes. Applied in `TestCaseService` (Title) and `ExcelImportService` (All fields). Excluded `-` to avoid breaking bullet points.
+
+## 2026-10-29 - CSV Injection in System.Tags
+**Vulnerability:** `System.Tags` field in Test Cases was not sanitized for CSV/Formula Injection, allowing malicious tags (e.g. from Gherkin feature files) to execute formulas when exported to Excel.
+**Learning:** `System.Tags` is a frequently exported field and should be treated as untrusted plain text. Even if tags are semicolon-separated, the first tag can trigger a formula.
+**Prevention:** Applied `sanitizeForCsv()` to `System.Tags` in `TestCaseService.ts`.
