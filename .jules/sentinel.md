@@ -37,3 +37,8 @@
 **Vulnerability:** `System.Tags` field in Test Cases was not sanitized for CSV/Formula Injection, allowing malicious tags (e.g. from Gherkin feature files) to execute formulas when exported to Excel.
 **Learning:** `System.Tags` is a frequently exported field and should be treated as untrusted plain text. Even if tags are semicolon-separated, the first tag can trigger a formula.
 **Prevention:** Applied `sanitizeForCsv()` to `System.Tags` in `TestCaseService.ts`.
+
+## 2026-10-30 - Incomplete CSV Injection Sanitization (Hyphen)
+**Vulnerability:** The hyphen (`-`) character was excluded from CSV sanitization to preserve markdown bullet points, leaving a vector for formula injection (e.g. `-1+1`, `-cmd|...`).
+**Learning:** Security exemptions for formatting must be narrowly scoped. A blanket exclusion of a dangerous character is risky. We can be specific: only allow `-` if followed by a space (standard bullet point syntax).
+**Prevention:** Updated `sanitizeForCsv()` to escape `-` unless it is followed by a space.
