@@ -20,7 +20,7 @@ export class FailureTaskService implements IFailureTaskService {
   ) { }
 
   private generateErrorHash(message: string): string {
-    return crypto.createHash('md5').update(message).digest('hex');
+    return crypto.createHash('sha256').update(message).digest('hex');
   }
 
   private async findTaskByErrorHash(hash: string): Promise<number | null> {
