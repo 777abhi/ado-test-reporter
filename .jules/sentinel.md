@@ -42,3 +42,8 @@
 **Vulnerability:** The hyphen (`-`) character was excluded from CSV sanitization to preserve markdown bullet points, leaving a vector for formula injection (e.g. `-1+1`, `-cmd|...`).
 **Learning:** Security exemptions for formatting must be narrowly scoped. A blanket exclusion of a dangerous character is risky. We can be specific: only allow `-` if followed by a space (standard bullet point syntax).
 **Prevention:** Updated `sanitizeForCsv()` to escape `-` unless it is followed by a space.
+
+## 2026-02-10 - Weak Hashing Algorithm (MD5)
+**Vulnerability:** Error grouping logic in `FailureTaskService.ts` used MD5, which is considered cryptographically weak and prone to collisions.
+**Learning:** While the primary risk here is collision-based reporting issues rather than data leakage, using modern hashing algorithms (SHA-256) is a standard security best practice to prevent potential collision attacks.
+**Prevention:** Upgraded `generateErrorHash` to use `sha256`. Note: This changes the hash length from 32 to 64 characters, causing new tasks to be created for existing errors (one-time migration).
