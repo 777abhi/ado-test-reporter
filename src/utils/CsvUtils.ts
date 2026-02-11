@@ -14,7 +14,9 @@ export function sanitizeForCsv(value: string): string {
   if (typeof value !== 'string') return value;
 
   const unsafePrefixes = ['=', '+', '@'];
-  const firstChar = value.charAt(0);
+  // Sentinel: Trim whitespace to check for formula prefixes, as Excel ignores leading whitespace
+  const trimmed = value.trim();
+  const firstChar = trimmed.charAt(0);
 
   if (unsafePrefixes.includes(firstChar)) {
     return `'${value}`;
@@ -23,7 +25,7 @@ export function sanitizeForCsv(value: string): string {
   if (firstChar === '-') {
     // Check if the next character is a space (likely a bullet point)
     // If NOT a space (or end of string), sanitize it to prevent formula injection (e.g. -1+1, -cmd...)
-    const secondChar = value.charAt(1);
+    const secondChar = trimmed.charAt(1);
     if (secondChar !== ' ') {
       return `'${value}`;
     }
