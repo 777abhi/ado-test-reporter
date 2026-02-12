@@ -8,6 +8,7 @@ import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
 import { ILogger } from "./interfaces/ILogger";
 import { escapeWiqlString } from "./utils/WiqlUtils";
 import { sanitizeForCsv } from "./utils/CsvUtils";
+import * as crypto from 'crypto';
 
 export class TestCaseService implements ITestCaseService {
   private byId = new Map<number, TestCaseInfo>();
@@ -88,11 +89,11 @@ export class TestCaseService implements ITestCaseService {
   async updateTestCase(testCaseId: number, fields: Record<string, any>): Promise<void> {
     // Sentinel: Sanitize Title for CSV/Formula Injection
     if (fields["System.Title"] && typeof fields["System.Title"] === 'string') {
-        fields["System.Title"] = sanitizeForCsv(fields["System.Title"]);
+        fields["System.Title"] = this.ensureTitleLength(sanitizeForCsv(fields["System.Title"]));
     }
     // Also handle if passed as /fields/System.Title
     if (fields["/fields/System.Title"] && typeof fields["/fields/System.Title"] === 'string') {
-        fields["/fields/System.Title"] = sanitizeForCsv(fields["/fields/System.Title"]);
+        fields["/fields/System.Title"] = this.ensureTitleLength(sanitizeForCsv(fields["/fields/System.Title"]));
     }
 
     // Sentinel: Sanitize Tags for CSV/Formula Injection
@@ -244,16 +245,19 @@ export class TestCaseService implements ITestCaseService {
   private async findByName(testName: string): Promise<TestCaseInfo | null> {
     this.logger.log(`🔍 Searching for Test Case by name: "${testName}"`);
     const escapedProject = escapeWiqlString(this.project);
-    const escapedTestName = escapeWiqlString(testName);
 
-    // Sentinel: Search for both original and sanitized name to prevent duplicates
+    // Sentinel: Enforce length limit and sanitize for CSV
+    const safeName = this.ensureTitleLength(testName);
     const sanitized = sanitizeForCsv(testName);
-    let whereClause = `[System.Title] = '${escapedTestName}'`;
+    const safeSanitized = this.ensureTitleLength(sanitized);
 
-    if (sanitized !== testName) {
-        const escapedSanitized = escapeWiqlString(sanitized);
-        whereClause = `(${whereClause} OR [System.Title] = '${escapedSanitized}')`;
-        this.logger.log(`🔍 Including sanitized search: "${sanitized}"`);
+    const escapedSafeName = escapeWiqlString(safeName);
+    let whereClause = `[System.Title] = '${escapedSafeName}'`;
+
+    if (safeSanitized !== safeName) {
+        const escapedSafeSanitized = escapeWiqlString(safeSanitized);
+        whereClause = `(${whereClause} OR [System.Title] = '${escapedSafeSanitized}')`;
+        this.logger.log(`🔍 Including sanitized search: "${safeSanitized}"`);
     }
 
     const wiql = `SELECT [System.Id], [System.Rev], [System.Title] FROM WorkItems WHERE [System.TeamProject] = '${escapedProject}' AND [System.WorkItemType] = 'Test Case' AND ${whereClause}`;
@@ -288,10 +292,11 @@ export class TestCaseService implements ITestCaseService {
   }
 
   private async createTestCase(testName: string): Promise<TestCaseInfo> {
-    // Sentinel: Sanitize Title for CSV/Formula Injection
-    const titleToUse = sanitizeForCsv(testName);
+    // Sentinel: Sanitize Title for CSV/Formula Injection AND enforce length limit
+    const titleToUse = this.ensureTitleLength(sanitizeForCsv(testName));
+
     if (titleToUse !== testName) {
-        this.logger.log(`🛡️ Sanitizing Test Case Title for creation: "${testName}" -> "${titleToUse}"`);
+        this.logger.log(`🛡️ Sanitizing/Truncating Test Case Title for creation: "${titleToUse}"`);
     }
 
     const patchDocument: JsonPatchOperation[] = [
@@ -320,6 +325,20 @@ export class TestCaseService implements ITestCaseService {
     this.byName.set(testName, info); // Cache with original name so we don't recreate
     this.logger.log(`🆕 Created Test Case ${created.id} for "${testName}" (Title: ${titleToUse})`);
     return info;
+  }
+
+  private ensureTitleLength(title: string): string {
+    const MAX_LENGTH = 255;
+    if (title.length <= MAX_LENGTH) {
+      return title;
+    }
+
+    // Create a hash of the full title to ensure uniqueness
+    const hash = crypto.createHash('sha256').update(title).digest('hex').substring(0, 8);
+    // Truncate title to accommodate hash and separator
+    // 255 - 1 (separator) - 8 (hash) = 246
+    const truncated = title.substring(0, 246);
+    return `${truncated}-${hash}`;
   }
 
   private async linkRequirements(testCaseId: number, textToParse: string): Promise<void> {

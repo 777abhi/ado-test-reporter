@@ -47,3 +47,8 @@
 **Vulnerability:** Error grouping logic in `FailureTaskService.ts` used MD5, which is considered cryptographically weak and prone to collisions.
 **Learning:** While the primary risk here is collision-based reporting issues rather than data leakage, using modern hashing algorithms (SHA-256) is a standard security best practice to prevent potential collision attacks.
 **Prevention:** Upgraded `generateErrorHash` to use `sha256`. Note: This changes the hash length from 32 to 64 characters, causing new tasks to be created for existing errors (one-time migration).
+
+## 2026-10-31 - Unbounded Input Length (DoS)
+**Vulnerability:** `System.Title` in Test Cases was not checked for length limits. Extremely long test names (>255 chars) caused API errors, crashing the sync process and denying service.
+**Learning:** External APIs often have strict input limits. Relying on them to handle over-length inputs gracefully is risky. Proactive truncation/validation ensures pipeline stability.
+**Prevention:** Implemented `ensureTitleLength` in `TestCaseService` to truncate titles to 255 chars, appending a SHA-256 hash to preserve uniqueness.
