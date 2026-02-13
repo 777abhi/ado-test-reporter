@@ -40,7 +40,25 @@ export class JUnitParser implements ITestResultParser {
             ? JSON.stringify(tc.failure[0])
             : undefined;
 
-        results.push({ name, durationMs: duration, outcome, errorMessage });
+        const attachments: string[] = [];
+        const contentSources = [
+          ...(tc['system-out'] || []),
+          ...(tc['system-err'] || [])
+        ];
+
+        // Regex to find [[ATTACHMENT|path/to/file]]
+        const attachmentRegex = /\[\[ATTACHMENT\|([^\]]+)\]\]/g;
+
+        for (const source of contentSources) {
+          if (typeof source === 'string') {
+             let match;
+             while ((match = attachmentRegex.exec(source)) !== null) {
+               attachments.push(match[1].trim());
+             }
+          }
+        }
+
+        results.push({ name, durationMs: duration, outcome, errorMessage, attachments });
       }
     }
 

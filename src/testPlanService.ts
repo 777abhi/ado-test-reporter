@@ -13,7 +13,7 @@ import {
   TestSuiteCreateParams,
   TestSuiteType,
 } from "azure-devops-node-api/interfaces/TestPlanInterfaces";
-import { ITestPlanService, PlanSuiteInfo, SuiteInfo } from "./interfaces/ITestPlanService";
+import { ITestPlanService, PlanSuiteInfo, SuiteInfo, TestCaseResultWithAttachments } from "./interfaces/ITestPlanService";
 import { ILogger } from "./interfaces/ILogger";
 
 export class TestPlanService implements ITestPlanService {
@@ -200,7 +200,7 @@ export class TestPlanService implements ITestPlanService {
     suiteName: string,
     buildId: number,
     buildNumber: string,
-    results: TestCaseResult[],
+    results: TestCaseResultWithAttachments[],
     pointIds: number[],
     attachmentPath?: string
   ): Promise<{ runId: number; runUrl: string }> {
@@ -255,6 +255,43 @@ export class TestPlanService implements ITestPlanService {
         throw new Error("❌ Failed to add test results to the run. No results returned from API.");
       }
       this.logger.log(`📊 Published ${addedResults.length} results.`);
+
+      // Upload result attachments
+      for (let i = 0; i < addedResults.length; i++) {
+        const addedResult = addedResults[i];
+        const originalResult = results[i];
+
+        if (originalResult.localAttachments && originalResult.localAttachments.length > 0) {
+          for (const attachPath of originalResult.localAttachments) {
+            try {
+              if (fs.existsSync(attachPath)) {
+                const fileContent = fs.readFileSync(attachPath);
+                const encoded = fileContent.toString("base64");
+                const attachmentRequest: TestAttachmentRequestModel = {
+                  fileName: path.basename(attachPath),
+                  stream: encoded,
+                  attachmentType: "GeneralAttachment",
+                  comment: "Attached by ADO Test Reporter",
+                };
+
+                if (addedResult.id) {
+                    await this.testApi.createTestResultAttachment(
+                      attachmentRequest,
+                      this.project,
+                      testRun.id,
+                      addedResult.id
+                    );
+                    this.logger.log(`📎 Attached file to result ${addedResult.id}: ${attachPath}`);
+                }
+              } else {
+                this.logger.warn(`⚠️ Attachment file not found: ${attachPath}`);
+              }
+            } catch (err) {
+              this.logger.warn(`⚠️ Failed to attach file ${attachPath} to result: ${(err as Error).message}`);
+            }
+          }
+        }
+      }
     }
 
     const runUpdateModel: RunUpdateModel = { state: "Completed" };

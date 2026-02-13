@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { IFailureTaskService, FailureInfo } from "./interfaces/IFailureTaskService";
 import { ILogger } from "./interfaces/ILogger";
 import { IWorkItemTrackingApi } from "azure-devops-node-api/WorkItemTrackingApi";
@@ -162,6 +164,49 @@ export class FailureTaskService implements IFailureTaskService {
     }
   }
 
+  private async attachFiles(workItemId: number, attachments?: string[]): Promise<void> {
+    if (!attachments || attachments.length === 0) return;
+
+    for (const attachPath of attachments) {
+      try {
+        if (fs.existsSync(attachPath)) {
+          const stream = fs.createReadStream(attachPath);
+          const fileName = path.basename(attachPath);
+
+          const attachment = await this.workItemApi.createAttachment(
+            undefined,
+            stream,
+            fileName,
+            undefined,
+            this.project
+          );
+
+          if (attachment.url) {
+             const patch: JsonPatchOperation[] = [
+                {
+                    op: Operation.Add,
+                    path: "/relations/-",
+                    value: {
+                        rel: "AttachedFile",
+                        url: attachment.url,
+                        attributes: {
+                            comment: "Attached by ADO Test Reporter"
+                        }
+                    }
+                }
+            ];
+            await this.workItemApi.updateWorkItem(undefined, patch, workItemId, this.project);
+            this.logger.log(`📎 Linked attachment to task ${workItemId}: ${attachPath}`);
+          }
+        } else {
+             this.logger.warn(`⚠️ Attachment not found: ${attachPath}`);
+        }
+      } catch (e) {
+          this.logger.warn(`⚠️ Failed to attach ${attachPath} to task ${workItemId}: ${(e as Error).message}`);
+      }
+    }
+  }
+
   async createTaskForFailure(failure: FailureInfo): Promise<void> {
     let existingTaskId: number | null = null;
     let errorHash: string | null = null;
@@ -234,6 +279,7 @@ export class FailureTaskService implements IFailureTaskService {
       }
 
       await this.addComment(existingTaskId, comment);
+      await this.attachFiles(existingTaskId, failure.attachments);
       return;
     }
 
@@ -318,6 +364,7 @@ export class FailureTaskService implements IFailureTaskService {
     }
 
     this.logger.log(`📌 Created ${this.defectType} ${created.id} for failed test ${failure.testName}`);
+    await this.attachFiles(created.id, failure.attachments);
   }
 
   async resolveTaskForSuccess(testCaseId: string, buildNumber: string): Promise<void> {

@@ -1,6 +1,10 @@
 
 import { TestCaseResult } from "azure-devops-node-api/interfaces/TestInterfaces";
 
+export interface TestCaseResultWithAttachments extends TestCaseResult {
+    localAttachments?: string[];
+}
+
 export type PlanSuiteInfo = {
     planId: number;
     rootSuiteId?: number;
@@ -32,7 +36,7 @@ export interface ITestPlanService {
         suiteName: string,
         buildId: number,
         buildNumber: string,
-        results: TestCaseResult[],
+        results: TestCaseResultWithAttachments[],
         pointIds: number[],
         attachmentPath?: string
     ): Promise<{ runId: number; runUrl: string }>;
