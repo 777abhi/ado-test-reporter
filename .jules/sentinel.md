@@ -52,3 +52,8 @@
 **Vulnerability:** `System.Title` in Test Cases was not checked for length limits. Extremely long test names (>255 chars) caused API errors, crashing the sync process and denying service.
 **Learning:** External APIs often have strict input limits. Relying on them to handle over-length inputs gracefully is risky. Proactive truncation/validation ensures pipeline stability.
 **Prevention:** Implemented `ensureTitleLength` in `TestCaseService` to truncate titles to 255 chars, appending a SHA-256 hash to preserve uniqueness.
+
+## 2026-11-01 - XML External Entity (XXE) and DoS Protection
+**Vulnerability:** `JUnitParser` read arbitrary file paths into memory without size limits or type checks. This could lead to Denial of Service (DoS) via large files (OOM) or reading from blocking devices (e.g. `/dev/zero`).
+**Learning:** File processing logic must always validate inputs (file type and size) *before* reading content into memory, especially in Node.js where large buffers can crash the process.
+**Prevention:** Implemented strict file size limit (50MB) and `isFile()` check in `junitParser.ts` before reading.
