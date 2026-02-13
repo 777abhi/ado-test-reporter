@@ -4,6 +4,19 @@ import { ITestResultParser, ParsedTestCase } from "./interfaces/ITestResultParse
 
 export class JUnitParser implements ITestResultParser {
   async parse(filePath: string): Promise<ParsedTestCase[]> {
+    const stats = fs.statSync(filePath);
+
+    if (!stats.isFile()) {
+      throw new Error(`JUnit XML path is not a file: ${filePath}`);
+    }
+
+    const MAX_XML_SIZE = 50 * 1024 * 1024; // 50MB
+    if (stats.size > MAX_XML_SIZE) {
+      throw new Error(
+        `JUnit XML file is too large (${(stats.size / 1024 / 1024).toFixed(2)}MB). Max allowed: 50MB.`
+      );
+    }
+
     const xmlContent = fs.readFileSync(filePath, "utf-8");
     const parser = new xml2js.Parser();
     const parsedXml = await parser.parseStringPromise(xmlContent);
