@@ -1,9 +1,8 @@
 import { ITestCaseService } from "./interfaces/ITestCaseService";
-import { ITestPlanService } from "./interfaces/ITestPlanService";
+import { ITestPlanService, TestCaseResultWithAttachments } from "./interfaces/ITestPlanService";
 import { IFailureTaskService } from "./interfaces/IFailureTaskService";
 import { ILogger } from "./interfaces/ILogger";
 import { ITestResultParser } from "./interfaces/ITestResultParser";
-import { TestCaseResult } from "azure-devops-node-api/interfaces/TestInterfaces";
 import { RunOptions } from "./interfaces/RunOptions";
 
 // Regex to extract Test Case ID from test name (e.g. "UserLogin_TC1056")
@@ -44,13 +43,14 @@ export class App {
         }
         this.logger.log(`🧪 Parsed ${parsedCases.length} test cases from JUnit.`);
 
-        const resultsToPublish: TestCaseResult[] = [];
+        const resultsToPublish: TestCaseResultWithAttachments[] = [];
         const testCaseIdsToLink: string[] = [];
         const passedTestCaseIds: string[] = [];
         const failedForTask: {
             testCaseId: string;
             testName: string;
             errorMessage?: string;
+            attachments?: string[];
         }[] = [];
 
         for (const tc of parsedCases) {
@@ -60,7 +60,7 @@ export class App {
                 match ? match[1] : null
             );
 
-            const resultModel: TestCaseResult = {
+            const resultModel: TestCaseResultWithAttachments = {
                 testCaseTitle: tc.name,
                 automatedTestName: tc.name,
                 durationInMs: tc.durationMs,
@@ -69,6 +69,7 @@ export class App {
                 errorMessage: tc.errorMessage,
                 testCase: { id: String(resolvedTestCase.id) },
                 testCaseRevision: resolvedTestCase.revision,
+                localAttachments: tc.attachments,
             };
 
             testCaseIdsToLink.push(String(resolvedTestCase.id));
@@ -79,6 +80,7 @@ export class App {
                     testCaseId: String(resolvedTestCase.id),
                     testName: tc.name,
                     errorMessage: tc.errorMessage,
+                    attachments: tc.attachments,
                 });
             } else if (tc.outcome === "Passed") {
                 passedTestCaseIds.push(String(resolvedTestCase.id));
@@ -140,6 +142,7 @@ export class App {
                     buildNumber: buildNumber,
                     runUrl: runInfo.runUrl,
                     runId: runInfo.runId,
+                    attachments: failure.attachments,
                 });
             }
         } else {

@@ -4,6 +4,7 @@ export type ParsedTestCase = {
     durationMs: number;
     outcome: "Passed" | "Failed";
     errorMessage?: string;
+    attachments?: string[];
 };
 
 export interface ITestResultParser {

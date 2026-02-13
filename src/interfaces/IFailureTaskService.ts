@@ -6,6 +6,7 @@ export type FailureInfo = {
     buildNumber: string;
     runUrl: string;
     runId: number;
+    attachments?: string[];
 };
 
 export interface IFailureTaskService {
