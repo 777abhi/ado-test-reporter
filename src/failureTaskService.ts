@@ -169,8 +169,17 @@ export class FailureTaskService implements IFailureTaskService {
 
     for (const attachPath of attachments) {
       try {
-        if (fs.existsSync(attachPath)) {
-          const stream = fs.createReadStream(attachPath);
+        const resolvedPath = path.resolve(attachPath);
+        const allowedRoot = path.resolve(process.cwd());
+
+        // Ensure path is within the current working directory
+        if (!resolvedPath.startsWith(allowedRoot + path.sep) && resolvedPath !== allowedRoot) {
+           this.logger.warn(`⚠️ Security Risk: Attachment path '${attachPath}' traverses outside the working directory. Skipping.`);
+           continue;
+        }
+
+        if (fs.existsSync(resolvedPath)) {
+          const stream = fs.createReadStream(resolvedPath);
           const fileName = path.basename(attachPath);
 
           const attachment = await this.workItemApi.createAttachment(
