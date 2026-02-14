@@ -57,3 +57,8 @@
 **Vulnerability:** `JUnitParser` read arbitrary file paths into memory without size limits or type checks. This could lead to Denial of Service (DoS) via large files (OOM) or reading from blocking devices (e.g. `/dev/zero`).
 **Learning:** File processing logic must always validate inputs (file type and size) *before* reading content into memory, especially in Node.js where large buffers can crash the process.
 **Prevention:** Implemented strict file size limit (50MB) and `isFile()` check in `junitParser.ts` before reading.
+
+## 2026-02-14 - Path Traversal in JUnit Attachments
+**Vulnerability:** `FailureTaskService` uploaded files specified in JUnit XML attachments (`[[ATTACHMENT|path]]`) without validating the path. This allowed malicious tests or modified XML to exfiltrate arbitrary files from the build agent (e.g., `/etc/passwd`, secrets).
+**Learning:** Never trust file paths provided in external input (like test results). Always treat them as untrusted and validate that they resolve to a safe directory (e.g., CWD).
+**Prevention:** Implemented path validation in `FailureTaskService.ts` using `path.resolve` to ensure all attachments are contained within the current working directory.
