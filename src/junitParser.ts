@@ -35,10 +35,18 @@ export class JUnitParser implements ITestResultParser {
         const name = tc.$.name;
         const duration = parseFloat(tc.$.time || "0") * 1000; // ms
         const outcome = tc.failure || tc.error ? "Failed" : "Passed";
-        const errorMessage =
-          tc.failure && tc.failure[0]
-            ? JSON.stringify(tc.failure[0])
-            : undefined;
+        let errorMessage: string | undefined;
+        if (tc.failure && tc.failure[0]) {
+            const fail = tc.failure[0];
+            // Sentinel: Extract meaningful error message and truncate to prevent DoS/Storage issues
+            let msg = typeof fail === 'string' ? fail : (fail._ || fail.$?.message || JSON.stringify(fail));
+            const MAX_MSG_LEN = 4096;
+            if (msg && msg.length > MAX_MSG_LEN) {
+                const suffix = '... (truncated)';
+                msg = msg.substring(0, MAX_MSG_LEN - suffix.length) + suffix;
+            }
+            errorMessage = msg;
+        }
 
         const attachments: string[] = [];
         const contentSources = [
@@ -46,8 +54,8 @@ export class JUnitParser implements ITestResultParser {
           ...(tc['system-err'] || [])
         ];
 
-        // Regex to find [[ATTACHMENT|path/to/file]]
-        const attachmentRegex = /\[\[ATTACHMENT\|([^\]]+)\]\]/g;
+        // Regex to find [[ATTACHMENT|path/to/file]] - Limited to 4KB to prevent DoS
+        const attachmentRegex = /\[\[ATTACHMENT\|([^\]]{1,4096})\]\]/g;
 
         for (const source of contentSources) {
           if (typeof source === 'string') {
