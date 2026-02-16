@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as glob from 'glob';
 import { GherkinStreams } from '@cucumber/gherkin-streams';
 import * as messages from '@cucumber/messages';
@@ -14,9 +15,37 @@ export class GherkinFeatureParser implements IFeatureParser {
             return [];
         }
 
+        const validFiles: string[] = [];
+        const MAX_FEATURE_SIZE = 50 * 1024 * 1024; // 50MB
+
+        for (const file of files) {
+            try {
+                const stats = fs.statSync(file);
+                if (!stats.isFile()) continue;
+
+                if (stats.size > MAX_FEATURE_SIZE) {
+                    throw new Error(
+                        `Feature file is too large (${(stats.size / 1024 / 1024).toFixed(2)}MB): ${file}. Max allowed: 50MB.`
+                    );
+                }
+                validFiles.push(file);
+            } catch (err: any) {
+                // Sentinel: Propagate size errors, warn on others
+                if (err.message && err.message.includes('too large')) {
+                    throw err;
+                }
+                console.warn(`Skipping file due to access error: ${file}`, err);
+            }
+        }
+
+        if (validFiles.length === 0) {
+            console.log("No valid feature files found after filtering.");
+            return [];
+        }
+
         const parsedScenarios: ParsedScenario[] = [];
 
-        const stream = GherkinStreams.fromPaths(files, {
+        const stream = GherkinStreams.fromPaths(validFiles, {
             newId: messages.IdGenerator.uuid(),
         });
 
