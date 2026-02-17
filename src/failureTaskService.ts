@@ -10,6 +10,7 @@ import {
 import { Wiql, WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { escapeWiqlString } from "./utils/WiqlUtils";
 import { escapeXml } from "./utils/XmlUtils";
+import { sanitizeForCsv } from "./utils/CsvUtils";
 import * as crypto from 'crypto';
 
 export class FailureTaskService implements IFailureTaskService {
@@ -292,11 +293,20 @@ export class FailureTaskService implements IFailureTaskService {
       return;
     }
 
-    let title = `[Auto] Investigate: ${failure.testName} (TC ${failure.testCaseId})`;
+    // Sentinel: Truncate and sanitize inputs for System.Title
+    const MAX_NAME_LEN = 200;
+    let safeName = failure.testName;
+    if (safeName.length > MAX_NAME_LEN) {
+        safeName = safeName.substring(0, MAX_NAME_LEN) + "...";
+    }
+    safeName = sanitizeForCsv(safeName);
+
+    let title = `[Auto] Investigate: ${safeName} (TC ${failure.testCaseId})`;
     let tags = "AutomatedTestFailure";
 
     if (failure.errorMessage && errorHash) {
-      const shortError = failure.errorMessage.split('\n')[0].substring(0, 100);
+      let shortError = failure.errorMessage.split('\n')[0].substring(0, 100);
+      shortError = sanitizeForCsv(shortError);
       title = `[Auto] Failure: ${shortError}`;
       tags += `; ErrorHash:${errorHash}`;
     }

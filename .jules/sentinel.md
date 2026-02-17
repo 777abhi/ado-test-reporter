@@ -62,3 +62,8 @@
 **Vulnerability:** `FailureTaskService` uploaded files specified in JUnit XML attachments (`[[ATTACHMENT|path]]`) without validating the path. This allowed malicious tests or modified XML to exfiltrate arbitrary files from the build agent (e.g., `/etc/passwd`, secrets).
 **Learning:** Never trust file paths provided in external input (like test results). Always treat them as untrusted and validate that they resolve to a safe directory (e.g., CWD).
 **Prevention:** Implemented path validation in `FailureTaskService.ts` using `path.resolve` to ensure all attachments are contained within the current working directory.
+
+## 2026-11-02 - CSV Injection and Unbounded Length in Failure Tasks
+**Vulnerability:** `FailureTaskService` created Work Items with `System.Title` derived directly from `testName` without length checks or CSV/Formula injection sanitization. This could cause API errors (DoS) or allow formulas to execute in exported Excel sheets.
+**Learning:** Even internal service-to-service calls (like creating a failure task from a test result) must treat inputs as untrusted. Consistency across similar services (`TestCaseService` had checks, `FailureTaskService` did not) is crucial.
+**Prevention:** Implemented truncation (200 chars) and `sanitizeForCsv` in `FailureTaskService.ts` for the `System.Title` field.
