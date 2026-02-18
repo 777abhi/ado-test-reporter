@@ -67,3 +67,8 @@
 **Vulnerability:** `FailureTaskService` created Work Items with `System.Title` derived directly from `testName` without length checks or CSV/Formula injection sanitization. This could cause API errors (DoS) or allow formulas to execute in exported Excel sheets.
 **Learning:** Even internal service-to-service calls (like creating a failure task from a test result) must treat inputs as untrusted. Consistency across similar services (`TestCaseService` had checks, `FailureTaskService` did not) is crucial.
 **Prevention:** Implemented truncation (200 chars) and `sanitizeForCsv` in `FailureTaskService.ts` for the `System.Title` field.
+
+## 2026-03-01 - Path Traversal in TestPlanService
+**Vulnerability:** `TestPlanService` uploaded files specified in JUnit XML attachments (`[[ATTACHMENT|path]]`) without validating the path. This allowed malicious tests or modified XML to exfiltrate arbitrary files from the build agent (e.g., `/etc/passwd`, secrets).
+**Learning:** Security fixes must be applied consistently across all services. The fix for this issue in `FailureTaskService` (2026-02-14) was not applied to `TestPlanService`, leaving a gap. Code reviews should look for similar patterns across the entire codebase.
+**Prevention:** Implemented path validation in `TestPlanService.ts` using `path.resolve` to ensure all attachments are contained within the current working directory.
