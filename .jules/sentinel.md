@@ -72,3 +72,8 @@
 **Vulnerability:** `TestPlanService` uploaded files specified in JUnit XML attachments (`[[ATTACHMENT|path]]`) without validating the path. This allowed malicious tests or modified XML to exfiltrate arbitrary files from the build agent (e.g., `/etc/passwd`, secrets).
 **Learning:** Security fixes must be applied consistently across all services. The fix for this issue in `FailureTaskService` (2026-02-14) was not applied to `TestPlanService`, leaving a gap. Code reviews should look for similar patterns across the entire codebase.
 **Prevention:** Implemented path validation in `TestPlanService.ts` using `path.resolve` to ensure all attachments are contained within the current working directory.
+
+## 2026-11-03 - Denial of Service (DoS) in Excel Parser
+**Vulnerability:** `ExcelParser` read arbitrary files into memory without validation. This allowed DoS attacks via large files (memory exhaustion) or reading from device files/directories.
+**Learning:** Consistent input validation across all parsers is critical. While `JUnitParser` and `GherkinFeatureParser` had limits, `ExcelParser` was missed, likely because it relied on a third-party library (`xlsx`) for reading.
+**Prevention:** Added `fs.statSync` checks for `isFile()` and 50MB size limit in `ExcelParser.ts`.
