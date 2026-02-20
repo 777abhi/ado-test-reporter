@@ -77,3 +77,8 @@
 **Vulnerability:** `ExcelParser` read arbitrary files into memory without validation. This allowed DoS attacks via large files (memory exhaustion) or reading from device files/directories.
 **Learning:** Consistent input validation across all parsers is critical. While `JUnitParser` and `GherkinFeatureParser` had limits, `ExcelParser` was missed, likely because it relied on a third-party library (`xlsx`) for reading.
 **Prevention:** Added `fs.statSync` checks for `isFile()` and 50MB size limit in `ExcelParser.ts`.
+
+## 2026-05-22 - Unsanitized HTML Fields in Excel Import (Dynamic Discovery)
+**Vulnerability:** Excel Import sanitized only a hardcoded list of HTML fields, leaving custom HTML fields vulnerable to Stored XSS if users mapped them without manual configuration.
+**Learning:** Security allowlists for schema-dependent data (like Work Item fields) are fragile if they don't adapt to the actual schema. Dynamic discovery of security constraints (e.g. fetch field types from API) is more robust than static configuration.
+**Prevention:** Implemented dynamic HTML field discovery in `ExcelImportService` by fetching field definitions from Azure DevOps API and automatically adding all `FieldType.Html` fields to the sanitization list.

@@ -3,7 +3,7 @@ import {
   JsonPatchOperation,
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
-import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
+import { WorkItemExpand, FieldType } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
 import { ILogger } from "./interfaces/ILogger";
 import { escapeWiqlString } from "./utils/WiqlUtils";
@@ -84,6 +84,26 @@ export class TestCaseService implements ITestCaseService {
       this.logger.warn(`⚠️ Test Case ${id} not found.`);
       return null;
     }
+  }
+
+  async getHtmlFields(): Promise<Set<string>> {
+    const htmlFields = new Set<string>();
+    try {
+      this.logger.log(`🔍 Fetching HTML fields for project: ${this.project}`);
+      const fields = await this.workItemApi.getFields(this.project);
+
+      for (const field of fields) {
+        if (field.type === FieldType.Html) {
+          if (field.referenceName) htmlFields.add(field.referenceName);
+          if (field.name) htmlFields.add(field.name);
+        }
+      }
+      this.logger.log(`✅ Found ${htmlFields.size} HTML fields (by ref and name).`);
+    } catch (e) {
+      this.logger.error(`❌ Failed to fetch fields for HTML detection: ${(e as Error).message}. Aborting to prevent security risk.`);
+      throw e;
+    }
+    return htmlFields;
   }
 
   async updateTestCase(testCaseId: number, fields: Record<string, any>): Promise<void> {
