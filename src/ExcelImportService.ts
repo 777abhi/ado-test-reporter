@@ -41,6 +41,10 @@ export class ExcelImportService implements IExcelImportService {
         const mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf-8')) as Record<string, string>;
         this.logger.log(`Loaded mapping from ${mappingPath}`);
 
+        // Sentinel: Dynamically fetch HTML fields from ADO to ensure proper sanitization
+        const dynamicHtmlFields = await this.testCaseService.getHtmlFields();
+        dynamicHtmlFields.forEach((f) => this.htmlFields.add(f));
+
         const rows = this.parser.parse(filePath);
         this.logger.log(`Parsed ${rows.length} rows from ${filePath}`);
 

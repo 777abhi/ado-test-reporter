@@ -6,4 +6,5 @@ export interface ITestCaseService {
     updateTestCase(testCaseId: number, fields: Record<string, any>): Promise<void>;
     linkRequirementsById(testCaseId: number, requirementIds: number[]): Promise<void>;
     getTestCase(id: number): Promise<TestCaseInfo | null>;
+    getHtmlFields(): Promise<Set<string>>;
 }
