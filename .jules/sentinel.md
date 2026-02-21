@@ -82,3 +82,8 @@
 **Vulnerability:** Excel Import sanitized only a hardcoded list of HTML fields, leaving custom HTML fields vulnerable to Stored XSS if users mapped them without manual configuration.
 **Learning:** Security allowlists for schema-dependent data (like Work Item fields) are fragile if they don't adapt to the actual schema. Dynamic discovery of security constraints (e.g. fetch field types from API) is more robust than static configuration.
 **Prevention:** Implemented dynamic HTML field discovery in `ExcelImportService` by fetching field definitions from Azure DevOps API and automatically adding all `FieldType.Html` fields to the sanitization list.
+
+## 2026-11-04 - Path Traversal in Test Run Attachment Upload
+**Vulnerability:** `TestPlanService` allowed uploading an arbitrary file as a test run attachment via the `attachmentPath` argument (exposed to CLI), without validating that the path is within the current working directory. This could allow an attacker controlling CLI arguments to exfiltrate sensitive files from the build agent.
+**Learning:** Security controls applied to internal data processing (like parsing JUnit XML for attachments) must also be applied to direct external inputs (like CLI arguments). Inconsistencies between how different inputs are handled often reveal security gaps.
+**Prevention:** Implemented path traversal validation in `TestPlanService.createRunAndPublish` to ensure `attachmentPath` resolves to a path within `process.cwd()`.

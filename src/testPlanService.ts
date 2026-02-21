@@ -221,8 +221,14 @@ export class TestPlanService implements ITestPlanService {
 
     if (attachmentPath) {
       try {
-        if (fs.existsSync(attachmentPath)) {
-          const fileContent = fs.readFileSync(attachmentPath);
+        const resolvedPath = path.resolve(attachmentPath);
+        const allowedRoot = path.resolve(process.cwd());
+
+        // Ensure path is within the current working directory
+        if (!resolvedPath.startsWith(allowedRoot + path.sep) && resolvedPath !== allowedRoot) {
+          this.logger.warn(`⚠️ Security Risk: Attachment path '${attachmentPath}' traverses outside the working directory. Skipping.`);
+        } else if (fs.existsSync(resolvedPath)) {
+          const fileContent = fs.readFileSync(resolvedPath);
           const encoded = fileContent.toString("base64");
           const attachmentRequest: TestAttachmentRequestModel = {
             fileName: path.basename(attachmentPath),
