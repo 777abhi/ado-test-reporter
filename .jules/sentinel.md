@@ -87,3 +87,8 @@
 **Vulnerability:** `TestPlanService` allowed uploading an arbitrary file as a test run attachment via the `attachmentPath` argument (exposed to CLI), without validating that the path is within the current working directory. This could allow an attacker controlling CLI arguments to exfiltrate sensitive files from the build agent.
 **Learning:** Security controls applied to internal data processing (like parsing JUnit XML for attachments) must also be applied to direct external inputs (like CLI arguments). Inconsistencies between how different inputs are handled often reveal security gaps.
 **Prevention:** Implemented path traversal validation in `TestPlanService.createRunAndPublish` to ensure `attachmentPath` resolves to a path within `process.cwd()`.
+
+## 2026-11-05 - CSV Injection in Semicolon-Separated Lists
+**Vulnerability:** `System.Tags` field in Azure DevOps Work Items was vulnerable to CSV/Formula Injection because sanitization only checked the beginning of the entire string. Malicious tags positioned after a semicolon (e.g., `tag1; =cmd`) were not sanitized, allowing formulas to execute when exported to Excel.
+**Learning:** Sanitization functions like `sanitizeForCsv` that check prefixes are insufficient for fields that contain delimited lists. Each element in the list must be sanitized individually.
+**Prevention:** Updated `TestCaseService.ts` to split `System.Tags` by semicolon, sanitize each tag individually, and then rejoin them.

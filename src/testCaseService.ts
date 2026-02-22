@@ -117,11 +117,19 @@ export class TestCaseService implements ITestCaseService {
     }
 
     // Sentinel: Sanitize Tags for CSV/Formula Injection
+    // Split tags by semicolon, sanitize each, and rejoin.
+    // This prevents malicious tags hidden in a list (e.g. "tag1; =cmd")
     if (fields["System.Tags"] && typeof fields["System.Tags"] === 'string') {
-        fields["System.Tags"] = sanitizeForCsv(fields["System.Tags"]);
+        fields["System.Tags"] = fields["System.Tags"]
+            .split(';')
+            .map((t: string) => sanitizeForCsv(t.trim()))
+            .join('; ');
     }
     if (fields["/fields/System.Tags"] && typeof fields["/fields/System.Tags"] === 'string') {
-        fields["/fields/System.Tags"] = sanitizeForCsv(fields["/fields/System.Tags"]);
+        fields["/fields/System.Tags"] = fields["/fields/System.Tags"]
+            .split(';')
+            .map((t: string) => sanitizeForCsv(t.trim()))
+            .join('; ');
     }
 
     const patch: JsonPatchOperation[] = Object.keys(fields).map((key) => ({
