@@ -20,6 +20,8 @@ export type AppArgs = {
     planName: string;
     suiteName: string;
     attachResults: boolean;
+    artifactsDir?: string;
+    artifactPattern?: string;
 };
 
 export interface IConfigService {
