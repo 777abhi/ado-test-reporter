@@ -41,6 +41,17 @@ async function run() {
         default: false,
         describe: "Attach JUnit results XML to the Test Run",
       },
+      "artifacts-dir": {
+        type: "string",
+        demandOption: false,
+        describe: "Directory containing test artifacts (screenshots, logs)",
+      },
+      "artifact-pattern": {
+        type: "string",
+        demandOption: false,
+        default: "{testName}.png",
+        describe: "Pattern to match artifacts (e.g., '{testName}.png', 'screenshot-{testName}.jpg')",
+      },
     })
     .parseSync();
 
@@ -90,7 +101,9 @@ async function run() {
     buildNumber: env.buildNumber,
     attachResults: args.attachResults,
     createFailureTasks: env.createFailureTasks,
-    autoCloseOnPass: env.autoCloseOnPass
+    autoCloseOnPass: env.autoCloseOnPass,
+    artifactsDir: args.artifactsDir,
+    artifactPattern: args.artifactPattern
   };
 
   await app.run(runOptions, args.junitFile);

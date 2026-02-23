@@ -6,4 +6,6 @@ export interface RunOptions {
     attachResults: boolean;
     createFailureTasks: boolean;
     autoCloseOnPass: boolean;
+    artifactsDir?: string;
+    artifactPattern?: string;
 }

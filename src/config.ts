@@ -74,7 +74,9 @@ export class ConfigService implements IConfigService {
     const planName = argv["plan-name"];
     const suiteName = argv["suite-name"];
     const attachResults = !!argv["attach-results"];
-    return { junitFile, planName, suiteName, attachResults };
+    const artifactsDir = argv["artifacts-dir"] ? path.resolve(argv["artifacts-dir"]) : undefined;
+    const artifactPattern = argv["artifact-pattern"];
+    return { junitFile, planName, suiteName, attachResults, artifactsDir, artifactPattern };
   }
 
   private parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
