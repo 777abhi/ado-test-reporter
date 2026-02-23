@@ -11,6 +11,7 @@ import { Wiql, WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemT
 import { escapeWiqlString } from "./utils/WiqlUtils";
 import { escapeXml } from "./utils/XmlUtils";
 import { sanitizeForCsv } from "./utils/CsvUtils";
+import { isSafePath } from "./utils/PathUtils";
 import * as crypto from 'crypto';
 
 export class FailureTaskService implements IFailureTaskService {
@@ -170,17 +171,13 @@ export class FailureTaskService implements IFailureTaskService {
 
     for (const attachPath of attachments) {
       try {
-        const resolvedPath = path.resolve(attachPath);
-        const allowedRoot = path.resolve(process.cwd());
-
-        // Ensure path is within the current working directory
-        if (!resolvedPath.startsWith(allowedRoot + path.sep) && resolvedPath !== allowedRoot) {
-           this.logger.warn(`⚠️ Security Risk: Attachment path '${attachPath}' traverses outside the working directory. Skipping.`);
+        if (!isSafePath(attachPath)) {
+           this.logger.warn(`⚠️ Security Risk: Attachment path '${attachPath}' traverses outside the working directory (or symlinked outside). Skipping.`);
            continue;
         }
 
-        if (fs.existsSync(resolvedPath)) {
-          const stream = fs.createReadStream(resolvedPath);
+        if (fs.existsSync(attachPath)) {
+          const stream = fs.createReadStream(attachPath);
           const fileName = path.basename(attachPath);
 
           const attachment = await this.workItemApi.createAttachment(

@@ -15,6 +15,7 @@ import {
 } from "azure-devops-node-api/interfaces/TestPlanInterfaces";
 import { ITestPlanService, PlanSuiteInfo, SuiteInfo, TestCaseResultWithAttachments } from "./interfaces/ITestPlanService";
 import { ILogger } from "./interfaces/ILogger";
+import { isSafePath } from "./utils/PathUtils";
 
 export class TestPlanService implements ITestPlanService {
   constructor(
@@ -221,14 +222,10 @@ export class TestPlanService implements ITestPlanService {
 
     if (attachmentPath) {
       try {
-        const resolvedPath = path.resolve(attachmentPath);
-        const allowedRoot = path.resolve(process.cwd());
-
-        // Ensure path is within the current working directory
-        if (!resolvedPath.startsWith(allowedRoot + path.sep) && resolvedPath !== allowedRoot) {
-          this.logger.warn(`⚠️ Security Risk: Attachment path '${attachmentPath}' traverses outside the working directory. Skipping.`);
-        } else if (fs.existsSync(resolvedPath)) {
-          const fileContent = fs.readFileSync(resolvedPath);
+        if (!isSafePath(attachmentPath)) {
+          this.logger.warn(`⚠️ Security Risk: Attachment path '${attachmentPath}' traverses outside the working directory (or symlinked outside). Skipping.`);
+        } else if (fs.existsSync(attachmentPath)) {
+          const fileContent = fs.readFileSync(attachmentPath);
           const encoded = fileContent.toString("base64");
           const attachmentRequest: TestAttachmentRequestModel = {
             fileName: path.basename(attachmentPath),
@@ -270,17 +267,13 @@ export class TestPlanService implements ITestPlanService {
         if (originalResult.localAttachments && originalResult.localAttachments.length > 0) {
           for (const attachPath of originalResult.localAttachments) {
             try {
-              const resolvedPath = path.resolve(attachPath);
-              const allowedRoot = path.resolve(process.cwd());
-
-              // Ensure path is within the current working directory
-              if (!resolvedPath.startsWith(allowedRoot + path.sep) && resolvedPath !== allowedRoot) {
-                this.logger.warn(`⚠️ Security Risk: Attachment path '${attachPath}' traverses outside the working directory. Skipping.`);
+              if (!isSafePath(attachPath)) {
+                this.logger.warn(`⚠️ Security Risk: Attachment path '${attachPath}' traverses outside the working directory (or symlinked outside). Skipping.`);
                 continue;
               }
 
-              if (fs.existsSync(resolvedPath)) {
-                const fileContent = fs.readFileSync(resolvedPath);
+              if (fs.existsSync(attachPath)) {
+                const fileContent = fs.readFileSync(attachPath);
                 const encoded = fileContent.toString("base64");
                 const attachmentRequest: TestAttachmentRequestModel = {
                   fileName: path.basename(attachPath),
