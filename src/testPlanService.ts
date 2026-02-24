@@ -18,6 +18,8 @@ import { ILogger } from "./interfaces/ILogger";
 import { isSafePath } from "./utils/PathUtils";
 
 export class TestPlanService implements ITestPlanService {
+  private readonly MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 50MB
+
   constructor(
     private testApi: ITestApi,
     private testPlanApi: ITestPlanApi,
@@ -225,20 +227,22 @@ export class TestPlanService implements ITestPlanService {
         if (!isSafePath(attachmentPath)) {
           this.logger.warn(`⚠️ Security Risk: Attachment path '${attachmentPath}' traverses outside the working directory (or symlinked outside). Skipping.`);
         } else if (fs.existsSync(attachmentPath)) {
-          const fileContent = fs.readFileSync(attachmentPath);
-          const encoded = fileContent.toString("base64");
-          const attachmentRequest: TestAttachmentRequestModel = {
-            fileName: path.basename(attachmentPath),
-            stream: encoded,
-            attachmentType: "GeneralAttachment",
-            comment: "Attached by ADO Test Reporter",
-          };
-          await this.testApi.createTestRunAttachment(
-            attachmentRequest,
-            this.project,
-            testRun.id
-          );
-          this.logger.log(`📎 Attached file: ${attachmentPath}`);
+          if (!this.isAttachmentTooLarge(attachmentPath)) {
+            const fileContent = fs.readFileSync(attachmentPath);
+            const encoded = fileContent.toString("base64");
+            const attachmentRequest: TestAttachmentRequestModel = {
+              fileName: path.basename(attachmentPath),
+              stream: encoded,
+              attachmentType: "GeneralAttachment",
+              comment: "Attached by ADO Test Reporter",
+            };
+            await this.testApi.createTestRunAttachment(
+              attachmentRequest,
+              this.project,
+              testRun.id
+            );
+            this.logger.log(`📎 Attached file: ${attachmentPath}`);
+          }
         } else {
           this.logger.warn(`⚠️ Attachment file not found: ${attachmentPath}`);
         }
@@ -273,6 +277,10 @@ export class TestPlanService implements ITestPlanService {
               }
 
               if (fs.existsSync(attachPath)) {
+                if (this.isAttachmentTooLarge(attachPath)) {
+                  continue;
+                }
+
                 const fileContent = fs.readFileSync(attachPath);
                 const encoded = fileContent.toString("base64");
                 const attachmentRequest: TestAttachmentRequestModel = {
@@ -316,5 +324,16 @@ export class TestPlanService implements ITestPlanService {
     ).toString();
 
     return { runId: testRun.id, runUrl };
+  }
+
+  private isAttachmentTooLarge(filePath: string): boolean {
+    const stats = fs.statSync(filePath);
+    if (stats.size > this.MAX_ATTACHMENT_SIZE) {
+      this.logger.warn(
+        `⚠️ Attachment too large (${(stats.size / 1024 / 1024).toFixed(2)}MB). Max allowed: 50MB. Skipping: ${filePath}`
+      );
+      return true;
+    }
+    return false;
   }
 }
