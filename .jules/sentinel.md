@@ -92,3 +92,8 @@
 **Vulnerability:** `System.Tags` field in Azure DevOps Work Items was vulnerable to CSV/Formula Injection because sanitization only checked the beginning of the entire string. Malicious tags positioned after a semicolon (e.g., `tag1; =cmd`) were not sanitized, allowing formulas to execute when exported to Excel.
 **Learning:** Sanitization functions like `sanitizeForCsv` that check prefixes are insufficient for fields that contain delimited lists. Each element in the list must be sanitized individually.
 **Prevention:** Updated `TestCaseService.ts` to split `System.Tags` by semicolon, sanitize each tag individually, and then rejoin them.
+
+## 2026-11-10 - CSV Injection in Gherkin Steps
+**Vulnerability:** Gherkin step text was sanitized for XML/HTML but not for CSV/Formula Injection. If exported to Excel, steps starting with `=`, `+`, `-`, `@` could execute formulas.
+**Learning:** Data that passes through multiple layers (Gherkin -> ADO HTML -> Excel) must be sanitized for all potential downstream sinks. Even if ADO stores it as HTML, Excel is a common final destination.
+**Prevention:** Applied `sanitizeForCsv` to Gherkin step text and keywords in `GherkinStepConverter.ts` before XML escaping.
