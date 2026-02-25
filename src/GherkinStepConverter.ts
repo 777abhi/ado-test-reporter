@@ -2,6 +2,7 @@ import { IGherkinStepConverter } from "./interfaces/IGherkinStepConverter";
 import { ParsedStep } from "./interfaces/IParsedScenario";
 import { IAdoStep } from "./interfaces/IAdoStep";
 import { escapeXml } from "./utils/XmlUtils";
+import { sanitizeForCsv } from "./utils/CsvUtils";
 
 export class GherkinStepConverter implements IGherkinStepConverter {
     public convert(gherkinSteps: ParsedStep[]): IAdoStep[] {
@@ -9,10 +10,15 @@ export class GherkinStepConverter implements IGherkinStepConverter {
         let currentStep: IAdoStep | null = null;
 
         for (const step of gherkinSteps) {
-            const rawKeyword = step.keyword.trim();
+            // Sentinel: Sanitize Gherkin steps to prevent CSV/Formula Injection
+            // We trim first, then sanitize for CSV (which adds ' if unsafe), then escape XML.
+            const rawKeyword = sanitizeForCsv(step.keyword.trim());
             const keyword = escapeXml(rawKeyword);
-            const text = escapeXml(step.text);
 
+            // Also sanitize the step text
+            const text = escapeXml(sanitizeForCsv(step.text));
+
+            // Note: rawKeyword should be safe "Given", "When", "Then" usually, so sanitizeForCsv won't touch it unless malicious.
             const isThen = rawKeyword === 'Then';
             const isContinuation = rawKeyword === 'And' || rawKeyword === 'But' || rawKeyword === '*';
 
