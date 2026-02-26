@@ -4,6 +4,7 @@ import { GherkinStreams } from '@cucumber/gherkin-streams';
 import * as messages from '@cucumber/messages';
 import { IFeatureParser } from './interfaces/IFeatureParser';
 import { ParsedScenario, ParsedStep } from './interfaces/IParsedScenario';
+import { SecretRedactor } from './utils/SecretRedactor';
 
 export class GherkinFeatureParser implements IFeatureParser {
     public async parse(pattern: string): Promise<ParsedScenario[]> {
@@ -55,8 +56,9 @@ export class GherkinFeatureParser implements IFeatureParser {
                     const feature = envelope.gherkinDocument.feature;
                     if (!feature) return;
 
-                    const featureName = feature.name;
-                    const featureDescription = feature.description || '';
+                    // Sentinel: Redact feature name and description to prevent secret leakage
+                    const featureName = SecretRedactor.redact(feature.name);
+                    const featureDescription = SecretRedactor.redact(feature.description || '');
                     const featureTags = feature.tags ? feature.tags.map(t => t.name) : [];
 
                     let backgroundSteps: readonly messages.Step[] = [];
@@ -120,12 +122,15 @@ export class GherkinFeatureParser implements IFeatureParser {
 
         const parsedSteps: ParsedStep[] = allSteps.map(step => ({
             keyword: step.keyword,
+            // Sentinel: We rely on GherkinStepConverter to redact step text,
+            // but for completeness we pass raw text here as ParsedStep defines it.
             text: step.text
         }));
 
         results.push({
-            name: scenario.name,
-            description: scenario.description || '',
+            // Sentinel: Redact scenario name and description
+            name: SecretRedactor.redact(scenario.name),
+            description: SecretRedactor.redact(scenario.description || ''),
             tags: allTags,
             steps: parsedSteps,
             tcId: tcId,

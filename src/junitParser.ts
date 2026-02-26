@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as xml2js from "xml2js";
 import { ITestResultParser, ParsedTestCase } from "./interfaces/ITestResultParser";
+import { SecretRedactor } from "./utils/SecretRedactor";
 
 export class JUnitParser implements ITestResultParser {
   async parse(filePath: string): Promise<ParsedTestCase[]> {
@@ -32,7 +33,8 @@ export class JUnitParser implements ITestResultParser {
     for (const suite of testSuites) {
       const suiteCases = suite.testcase || [];
       for (const tc of suiteCases) {
-        const name = tc.$.name;
+        // Sentinel: Redact test name to prevent secret leakage
+        const name = SecretRedactor.redact(tc.$.name);
         const duration = parseFloat(tc.$.time || "0") * 1000; // ms
         const outcome = tc.failure || tc.error ? "Failed" : "Passed";
         let errorMessage: string | undefined;
@@ -45,7 +47,8 @@ export class JUnitParser implements ITestResultParser {
                 const suffix = '... (truncated)';
                 msg = msg.substring(0, MAX_MSG_LEN - suffix.length) + suffix;
             }
-            errorMessage = msg;
+            // Sentinel: Redact error message to prevent secret leakage
+            errorMessage = SecretRedactor.redact(msg);
         }
 
         const attachments: string[] = [];
