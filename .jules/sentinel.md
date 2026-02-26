@@ -97,3 +97,8 @@
 **Vulnerability:** Gherkin step text was sanitized for XML/HTML but not for CSV/Formula Injection. If exported to Excel, steps starting with `=`, `+`, `-`, `@` could execute formulas.
 **Learning:** Data that passes through multiple layers (Gherkin -> ADO HTML -> Excel) must be sanitized for all potential downstream sinks. Even if ADO stores it as HTML, Excel is a common final destination.
 **Prevention:** Applied `sanitizeForCsv` to Gherkin step text and keywords in `GherkinStepConverter.ts` before XML escaping.
+
+## 2026-11-15 - Secret Leakage in Logs and Test Reports
+**Vulnerability:** JUnit XML results and Gherkin feature files often contain sensitive information (e.g., "Expected 'password123' to be '...'") in error messages or step text. This data was synchronized to Azure DevOps Work Items (Description/History) and logged to console, potentially exposing secrets to unauthorized users.
+**Learning:** Test artifacts are a common source of accidental secret leakage. Automated synchronization tools act as a bridge, propagating these secrets to permanent storage (ADO) where they are harder to rotate/revoke. Proactive redaction at the parsing layer is a critical defense-in-depth measure.
+**Prevention:** Implemented `SecretRedactor` utility with regex patterns for common credentials (Bearer tokens, API keys). Integrated redaction into `JUnitParser` (error messages, test names), `GherkinFeatureParser` (feature/scenario names/descriptions), and `GherkinStepConverter` (step text).
