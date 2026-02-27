@@ -24,11 +24,13 @@ export class SecretRedactor {
     ];
 
     // Generic Key/Value assignment for "password", "secret", "token", "key"
-    // Matches: password = "value", secret: value, etc.
-    // Be careful not to match too broadly (e.g. "key feature").
-    // We look for key followed by optional whitespace, then = or :, then optional whitespace, then non-whitespace/comma/semicolon value.
-    // Updated to be more specific to avoid false positives on "token" or "key".
-    private static readonly GENERIC_PATTERN = /\b(password|pwd|secret|access_token|api_token|auth_token|access_key|api_key|client_secret)\s*[:=]\s*(?:["']?)([^"'\s,;]+)(?:["']?)/gi;
+    // Matches: password = "value", secret: "value with spaces", etc.
+    // Group 1: Key (e.g. password, secret) - optionally quoted
+    // Group 2: Double quoted value (without quotes)
+    // Group 3: Single quoted value (without quotes)
+    // Group 4: Unquoted value (stops at whitespace/comma/semicolon)
+    // Updated: Key can be quoted (e.g. "access_token": "value") and 'token' added back.
+    private static readonly GENERIC_PATTERN = /(?:["']?)\b(password|pwd|secret|access_token|api_token|auth_token|access_key|api_key|client_secret|token)(?:["']?)\s*[:=]\s*(?:"([^"]+)"|'([^']+)'|([^"'\s,;]+))/gi;
 
     /**
      * Redacts known secret patterns from the input text.
@@ -45,10 +47,56 @@ export class SecretRedactor {
         }
 
         // 2. Redact generic key-value pairs (preserving the key)
-        redacted = redacted.replace(this.GENERIC_PATTERN, (match, key, value) => {
+        redacted = redacted.replace(this.GENERIC_PATTERN, (match, key, g2, g3, g4) => {
             // key is captured group 1
-            // value is captured group 2
-            return `${key}=***REDACTED***`;
+
+            // Reconstruct partially to preserve JSON/format style if possible,
+            // but primarily ensure redaction.
+
+            // Check if key was quoted in match
+            // The match string includes the quote if it was matched by `(?:["']?)`.
+            // But `key` group is just the word.
+
+            // Simple approach:
+            // If the match starts with " or ', assume key needs quotes.
+            const firstChar = match.trim().charAt(0);
+            const isKeyQuoted = firstChar === '"' || firstChar === "'";
+
+            // The separator is usually preserved in structure but we might change spacing.
+            // Let's try to just build a safe replacement string.
+
+            const separator = match.includes(':') ? ':' : '=';
+
+            // Determine if value was quoted
+            const isValueDoubleQuoted = g2 !== undefined;
+            const isValueSingleQuoted = g3 !== undefined;
+
+            let newValue = "***REDACTED***";
+            if (isValueDoubleQuoted) newValue = '"***REDACTED***"';
+            else if (isValueSingleQuoted) newValue = "'***REDACTED***'";
+
+            let newKey = key;
+            if (isKeyQuoted) {
+                 // Use the same quote style as start
+                 newKey = `${firstChar}${key}${firstChar}`;
+            }
+
+            // If it was JSON like "key": "val", we want "key": "***REDACTED***"
+            // If it was key="val", we want key="***REDACTED***"
+
+            // Note: Our regex allows spaces around separator.
+            // We lose that spacing information unless we capture it or guess.
+            // For logs, canonicalizing to `key: value` or `key=value` is fine.
+
+            // Special case for JSON: JSON requires double quotes and usually colon.
+            if (isKeyQuoted && separator === ':') {
+                 return `${newKey}: ${newValue}`;
+            }
+
+            // Default fallback
+            // Ensure we handle the "Single quotes with spaces" case: client_secret: '...'
+            // If separator is :, we return key: '***REDACTED***'
+            return `${newKey}${separator}${newValue}`;
         });
 
         return redacted;

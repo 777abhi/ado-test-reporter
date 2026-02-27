@@ -15,20 +15,21 @@ function testRedaction() {
             input: "Authorization: Bearer abcdef123456",
             expected: "Authorization: ***REDACTED***"
         },
+        // Updated expectations to reflect improved redaction that preserves quote style
         {
             name: "Generic Password with =",
             input: "password = \"supersecret\"",
-            expected: "password=***REDACTED***"
+            expected: "password=\"***REDACTED***\""
         },
         {
             name: "Generic Secret with :",
             input: "client_secret: mysecretvalue",
-            expected: "client_secret=***REDACTED***"
+            expected: "client_secret:***REDACTED***"
         },
         {
             name: "Generic API Key",
             input: "api_key='12345'",
-            expected: "api_key=***REDACTED***"
+            expected: "api_key='***REDACTED***'"
         },
         {
             name: "No Secrets",
@@ -37,7 +38,7 @@ function testRedaction() {
         },
         {
             name: "False Positive Check (token)",
-            input: "Unexpected token found.", // 'token' is not in the list anymore, generic pattern handles 'access_token' etc.
+            input: "Unexpected token found.",
             expected: "Unexpected token found."
         },
         {
