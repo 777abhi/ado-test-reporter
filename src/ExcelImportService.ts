@@ -38,6 +38,17 @@ export class ExcelImportService implements IExcelImportService {
             throw new Error(`Mapping file not found: ${mappingPath}`);
         }
 
+        const mappingStats = fs.statSync(mappingPath);
+        if (!mappingStats.isFile()) {
+            throw new Error(`Mapping path is not a file: ${mappingPath}`);
+        }
+
+        // Sentinel: Prevent DoS by limiting mapping file size to 5MB
+        const MAX_MAPPING_SIZE = 5 * 1024 * 1024;
+        if (mappingStats.size > MAX_MAPPING_SIZE) {
+            throw new Error(`Mapping file is too large (${(mappingStats.size / 1024 / 1024).toFixed(2)}MB). Max allowed: 5MB.`);
+        }
+
         const mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf-8')) as Record<string, string>;
         this.logger.log(`Loaded mapping from ${mappingPath}`);
 

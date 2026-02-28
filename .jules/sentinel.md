@@ -102,3 +102,8 @@
 **Vulnerability:** JUnit XML results and Gherkin feature files often contain sensitive information (e.g., "Expected 'password123' to be '...'") in error messages or step text. This data was synchronized to Azure DevOps Work Items (Description/History) and logged to console, potentially exposing secrets to unauthorized users.
 **Learning:** Test artifacts are a common source of accidental secret leakage. Automated synchronization tools act as a bridge, propagating these secrets to permanent storage (ADO) where they are harder to rotate/revoke. Proactive redaction at the parsing layer is a critical defense-in-depth measure.
 **Prevention:** Implemented `SecretRedactor` utility with regex patterns for common credentials (Bearer tokens, API keys). Integrated redaction into `JUnitParser` (error messages, test names), `GherkinFeatureParser` (feature/scenario names/descriptions), and `GherkinStepConverter` (step text).
+
+## 2026-03-01 - Denial of Service (DoS) in Excel Import Mapping
+**Vulnerability:** `ExcelImportService` read the `mappingPath` JSON file into memory without size limits or type checks. This could lead to Denial of Service (DoS) via large files (OOM) or reading from blocking devices (e.g. `/dev/zero`), especially since this path is provided via CLI.
+**Learning:** All file inputs, even seemingly small configuration or mapping files, must be validated for size and type before reading them entirely into memory.
+**Prevention:** Added `fs.statSync()` checks in `ExcelImportService.ts` to ensure `mappingPath` is a file (`isFile()`) and enforced a 5MB size limit before calling `fs.readFileSync()`.
