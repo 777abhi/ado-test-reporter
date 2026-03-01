@@ -8,6 +8,7 @@ import { TestCaseService } from "../testCaseService";
 import { TestPlanService } from "../testPlanService";
 import { ExcelImportService } from "../ExcelImportService";
 import { ExcelParser } from "../ExcelParser";
+import { SecretRedactor } from "./SecretRedactor";
 
 async function main() {
   const argv = yargsFactory(hideBin(process.argv))
@@ -81,7 +82,8 @@ async function main() {
           suiteName
       );
   } catch (err) {
-      console.error("❌ Error during Excel import:", err);
+      const errorStr = typeof err === 'string' ? err : ((err as Error).message || JSON.stringify(err));
+      console.error("❌ Error during Excel import:", SecretRedactor.redact(errorStr));
       process.exit(1);
   }
 }

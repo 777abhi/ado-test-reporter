@@ -3,6 +3,7 @@ import { ParsedScenario } from "./interfaces/IParsedScenario";
 import { IGherkinStepConverter } from "./interfaces/IGherkinStepConverter";
 import { ITestCaseService } from "./interfaces/ITestCaseService";
 import { escapeXml } from "./utils/XmlUtils";
+import { SecretRedactor } from "./utils/SecretRedactor";
 
 export class AdoSyncService implements IAdoSyncService {
     private testCaseService: ITestCaseService;
@@ -86,7 +87,8 @@ export class AdoSyncService implements IAdoSyncService {
             console.log(`    SUCCESS: Updated TC ${id} steps, tags, fields, and links.`);
 
         } catch (error) {
-            console.error(`    FAILED to update TC ${id}:`, error);
+            const errorStr = typeof error === 'string' ? error : ((error as Error).message || JSON.stringify(error));
+            console.error(SecretRedactor.redact(`    FAILED to update TC ${id}:`), SecretRedactor.redact(errorStr));
         }
     }
 }

@@ -12,6 +12,7 @@ import { TestCaseService } from "./testCaseService";
 import { TestPlanService } from "./testPlanService";
 import { FailureTaskService } from "./failureTaskService";
 import { RunOptions } from "./interfaces/RunOptions";
+import { SecretRedactor } from "./utils/SecretRedactor";
 
 async function run() {
   const defaultJUnit = path.resolve(process.cwd(), "src/results.xml");
@@ -110,6 +111,7 @@ async function run() {
 }
 
 run().catch((err) => {
-  console.error("💥 Error during execution:", err);
+  const errorStr = typeof err === 'string' ? err : ((err as Error).message || JSON.stringify(err));
+  console.error("💥 Error during execution:", SecretRedactor.redact(errorStr));
   process.exit(1);
 });
