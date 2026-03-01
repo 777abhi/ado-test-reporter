@@ -1,24 +1,29 @@
 
 import { ILogger } from "./interfaces/ILogger";
+import { SecretRedactor } from "./utils/SecretRedactor";
 
 export class ConsoleLogger implements ILogger {
     log(message: string): void {
-        console.log(message);
+        console.log(SecretRedactor.redact(message));
     }
 
     warn(message: string, error?: any): void {
+        const redactedMessage = SecretRedactor.redact(message);
         if (error) {
-            console.warn(message, error);
+            const errorStr = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+            console.warn(redactedMessage, SecretRedactor.redact(errorStr));
         } else {
-            console.warn(message);
+            console.warn(redactedMessage);
         }
     }
 
     error(message: string, error?: any): void {
+        const redactedMessage = SecretRedactor.redact(message);
         if (error) {
-            console.error(message, error);
+            const errorStr = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+            console.error(redactedMessage, SecretRedactor.redact(errorStr));
         } else {
-            console.error(message);
+            console.error(redactedMessage);
         }
     }
 }

@@ -5,6 +5,7 @@ import { AdoSyncService } from '../AdoSyncService';
 import { GherkinStepConverter } from '../GherkinStepConverter';
 import { TestCaseService } from '../testCaseService';
 import { ConsoleLogger } from '../ConsoleLogger';
+import { SecretRedactor } from '../utils/SecretRedactor';
 
 async function main() {
     try {
@@ -49,7 +50,8 @@ async function main() {
         console.log("Feature sync completed.");
 
     } catch (err) {
-        console.error("Error during sync:", err);
+        const errorStr = typeof err === 'string' ? err : ((err as Error).message || JSON.stringify(err));
+        console.error("Error during sync:", SecretRedactor.redact(errorStr));
         process.exit(1);
     }
 }
