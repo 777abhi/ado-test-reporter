@@ -298,13 +298,19 @@ export class FailureTaskService implements IFailureTaskService {
     }
     safeName = sanitizeForCsv(safeName);
 
-    let title = `[Auto] Investigate: ${safeName} (TC ${failure.testCaseId})`;
+    let titlePrefix = failure.isFlaky ? "[Auto] Flaky:" : "[Auto] Investigate:";
+    let title = `${titlePrefix} ${safeName} (TC ${failure.testCaseId})`;
     let tags = "AutomatedTestFailure";
+
+    if (failure.isFlaky) {
+        tags += "; Flaky";
+    }
 
     if (failure.errorMessage && errorHash) {
       let shortError = failure.errorMessage.split('\n')[0].substring(0, 100);
       shortError = sanitizeForCsv(shortError);
-      title = `[Auto] Failure: ${shortError}`;
+      titlePrefix = failure.isFlaky ? "[Auto] Flaky:" : "[Auto] Failure:";
+      title = `${titlePrefix} ${shortError}`;
       tags += `; ErrorHash:${errorHash}`;
     }
 

@@ -37,6 +37,9 @@ class MockTestPlanService implements ITestPlanService {
     ): Promise<{ runId: number; runUrl: string }> {
         return { runId: 100, runUrl: 'http://run' };
     }
+    async isTestFlaky(testCaseId: number, testName: string): Promise<boolean> {
+        return false;
+    }
 }
 
 class MockTestCaseService implements ITestCaseService {

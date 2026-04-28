@@ -7,6 +7,7 @@ export type FailureInfo = {
     runUrl: string;
     runId: number;
     attachments?: string[];
+    isFlaky?: boolean;
 };
 
 export interface IFailureTaskService {

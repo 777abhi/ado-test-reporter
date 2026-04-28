@@ -41,6 +41,8 @@ export class ConfigService implements IConfigService {
     const autoCreatePlan = this.parseBoolean(process.env.ADO_AUTO_CREATE_PLAN, true);
     const autoCreateSuite = this.parseBoolean(process.env.ADO_AUTO_CREATE_SUITE, true);
 
+    const detectFlakyTests = this.parseBoolean(process.env.ADO_DETECT_FLAKY_TESTS, false);
+
     const htmlFields = (process.env.ADO_HTML_FIELDS || "")
       .split(",")
       .map((f) => f.trim())
@@ -66,6 +68,7 @@ export class ConfigService implements IConfigService {
       autoCreatePlan,
       autoCreateSuite,
       htmlFields,
+      detectFlakyTests,
     };
   }
 

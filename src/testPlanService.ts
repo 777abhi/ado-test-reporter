@@ -7,6 +7,7 @@ import {
   RunUpdateModel,
   TestCaseResult,
   TestAttachmentRequestModel,
+  ResultsFilter,
 } from "azure-devops-node-api/interfaces/TestInterfaces";
 import {
   TestPlanCreateParams,
@@ -335,5 +336,45 @@ export class TestPlanService implements ITestPlanService {
       return true;
     }
     return false;
+  }
+
+  async isTestFlaky(testCaseId: number, testName: string): Promise<boolean> {
+    try {
+      const filter: ResultsFilter = {
+        automatedTestName: testName,
+        testCaseId: testCaseId,
+        trendDays: 7, // Look back 7 days
+      } as any; // Cast because the type is missing trendDays in some older typings or we just need to pass standard fields
+
+      // Actually, trendDays is part of TestResultHistoryRequest if there's one, but ResultsFilter might just accept it or we just use automatedTestName and testCaseId.
+      const history = await this.testApi.queryTestResultHistory(filter, this.project);
+
+      if (!history || !history.resultsForGroup) {
+        return false;
+      }
+
+      let hasPass = false;
+      let hasFail = false;
+
+      for (const group of history.resultsForGroup) {
+        // According to interfaces, history.resultsForGroup is TestResultHistoryDetailsForGroup[] or TestResultHistoryForGroup[].
+        // The interface says: TestResultHistoryDetailsForGroup { groupByValue?: any; latestResult?: TestCaseResult; }
+        // BUT there is also TestResultHistoryForGroup { results?: TestCaseResult[] }
+        // Let's check if it has results or just latestResult.
+        const results = (group as any).results || ((group as any).latestResult ? [(group as any).latestResult] : []);
+
+        for (const res of results) {
+          if (res.outcome === "Passed") hasPass = true;
+          if (res.outcome === "Failed") hasFail = true;
+
+          if (hasPass && hasFail) return true;
+        }
+      }
+
+      return false;
+    } catch (e) {
+      this.logger.warn(`⚠️ Failed to check flaky status for test case ${testCaseId}: ${(e as Error).message}`);
+      return false;
+    }
   }
 }

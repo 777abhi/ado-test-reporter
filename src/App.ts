@@ -99,6 +99,7 @@ export class App {
             testName: string;
             errorMessage?: string;
             attachments?: string[];
+            isFlaky?: boolean;
         }[] = [];
 
         for (const tc of parsedCases) {
@@ -124,11 +125,17 @@ export class App {
             resultsToPublish.push(resultModel);
 
             if (tc.outcome === "Failed") {
+                let isFlaky = false;
+                if (options.detectFlakyTests) {
+                    isFlaky = await this.testPlanService.isTestFlaky(resolvedTestCase.id, tc.name);
+                }
+
                 failedForTask.push({
                     testCaseId: String(resolvedTestCase.id),
                     testName: tc.name,
                     errorMessage: tc.errorMessage,
                     attachments: tc.attachments,
+                    isFlaky: isFlaky,
                 });
             } else if (tc.outcome === "Passed") {
                 passedTestCaseIds.push(String(resolvedTestCase.id));
@@ -191,6 +198,7 @@ export class App {
                     runUrl: runInfo.runUrl,
                     runId: runInfo.runId,
                     attachments: failure.attachments,
+                    isFlaky: failure.isFlaky,
                 });
             }
         } else {

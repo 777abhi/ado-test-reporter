@@ -40,4 +40,5 @@ export interface ITestPlanService {
         pointIds: number[],
         attachmentPath?: string
     ): Promise<{ runId: number; runUrl: string }>;
+    isTestFlaky(testCaseId: number, testName: string): Promise<boolean>;
 }

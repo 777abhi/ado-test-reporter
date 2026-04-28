@@ -104,7 +104,8 @@ async function run() {
     createFailureTasks: env.createFailureTasks,
     autoCloseOnPass: env.autoCloseOnPass,
     artifactsDir: args.artifactsDir,
-    artifactPattern: args.artifactPattern
+    artifactPattern: args.artifactPattern,
+    detectFlakyTests: env.detectFlakyTests
   };
 
   await app.run(runOptions, args.junitFile);
