@@ -8,4 +8,5 @@ export interface RunOptions {
     autoCloseOnPass: boolean;
     artifactsDir?: string;
     artifactPattern?: string;
+    detectFlakyTests?: boolean;
 }

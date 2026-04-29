@@ -63,6 +63,14 @@ The tool intelligently maps results to ADO Test Cases:
 - **RTM Automation**: Parses Requirement IDs (e.g., `Story123`, `AB#456`) from test names or Gherkin tags.
 - **Traceability**: Links the Test Case to the Requirement (`Tests` / `Tested By` link) automatically.
 
+### 7. 📸 Artifact & Screenshot Support
+- **Rich Context**: Support uploading individual test attachments (screenshots, logs) to the Test Result or Failure Task.
+- **Fast Debugging**: Drastically reduces debugging time by attaching relevant screenshots to the task.
+
+### 8. 📉 Flaky Test Detection
+- **Smart Triage**: Analyze historical outcome data (last 7 days) before creating a failure task.
+- **Tagging**: If a test toggles frequently between passing and failing, tag it as "Flaky" and prefix the task title instead of raising it as a standard defect.
+
 ---
 
 ## 🔮 Roadmap: Next Incremental Features
@@ -70,25 +78,18 @@ The tool intelligently maps results to ADO Test Cases:
 To further enhance End-to-End Traceability and workflow automation, the following features are planned:
 
 ### Phase 1: Deepening Technical Capabilities
-1.  **📸 Artifact & Screenshot Support**:
-    - *Logic*: Support uploading individual test attachments (screenshots, logs) to the Test Result or Failure Task.
-    - *Benefit*: Drastically reduces debugging time.
 
-2.  **📉 Flaky Test Detection**:
-    - *Logic*: Analyze historical outcome data before creating a failure task. If a test toggles frequently, tag it as "Flaky" instead of raising a critical defect.
-    - *Benefit*: Reduces alert fatigue.
-
-3.  **🌍 Multi-Configuration Matrix**:
+1.  **🌍 Multi-Configuration Matrix**:
     - *Logic*: Enhanced mapping for executing the same test across multiple configurations (e.g., Browser=Chrome vs Edge) in a single run.
 
 ### Phase 2: Enterprise Quality & Multi-Team Scaling
 To support uniform status reporting and quality engineering across the organization:
 
-4.  **🏢 Centralized Multi-Project Reporting**:
+2.  **🏢 Centralized Multi-Project Reporting**:
     - *Logic*: Aggregates test run data from multiple ADO Projects into a single view.
     - *Benefit*: Provides leadership with a unified quality dashboard across all product lines.
 
-5.  **📏 Standardized Quality Gates**:
+3.  **📏 Standardized Quality Gates**:
     - *Logic*: Configurable thresholds (e.g., "95% Pass Rate") applied uniformly across all teams' pipelines.
     - *Benefit*: Enforces a consistent definition of "Done" for the organization.
 
@@ -135,6 +136,7 @@ ADO_DEFECT_TYPE=Task # or Bug
 ADO_AUTO_CLOSE_ON_PASS=true
 ADO_FALLBACK_TO_NAME_SEARCH=false
 ADO_AUTO_CREATE_TEST_CASES=true
+ADO_DETECT_FLAKY_TESTS=false # Set to true to enable flaky test detection
 ```
 
 ### Usage

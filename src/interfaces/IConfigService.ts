@@ -13,6 +13,7 @@ export type AppEnv = {
     autoCreatePlan: boolean;
     autoCreateSuite: boolean;
     htmlFields: string[];
+    detectFlakyTests: boolean;
 };
 
 export type AppArgs = {
