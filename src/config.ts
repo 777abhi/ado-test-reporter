@@ -79,7 +79,20 @@ export class ConfigService implements IConfigService {
     const attachResults = !!argv["attach-results"];
     const artifactsDir = argv["artifacts-dir"] ? path.resolve(argv["artifacts-dir"]) : undefined;
     const artifactPattern = argv["artifact-pattern"];
-    return { junitFile, planName, suiteName, attachResults, artifactsDir, artifactPattern };
+    const generateDashboard = !!argv["generate-dashboard"];
+    const dashboardDays = argv["dashboard-days"] ? Number(argv["dashboard-days"]) : 30;
+    const dashboardOutput = argv["dashboard-output"];
+    return {
+      junitFile,
+      planName,
+      suiteName,
+      attachResults,
+      artifactsDir,
+      artifactPattern,
+      generateDashboard,
+      dashboardDays,
+      dashboardOutput,
+    };
   }
 
   private parseBoolean(value: string | undefined, defaultValue: boolean): boolean {

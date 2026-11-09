@@ -23,6 +23,9 @@ export type AppArgs = {
     attachResults: boolean;
     artifactsDir?: string;
     artifactPattern?: string;
+    generateDashboard?: boolean;
+    dashboardDays?: number;
+    dashboardOutput?: string;
 };
 
 export interface IConfigService {

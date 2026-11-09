@@ -7,7 +7,9 @@
     "start": "ts-node src/index.ts",
     "sync-features": "ts-node src/utils/syncFeaturesToAdo.ts",
     "import-excel": "ts-node src/utils/importExcel.ts",
-    "fetch-variable-group": "ts-node src/utils/fetchVariableGroup.ts"
+    "fetch-variable-group": "ts-node src/utils/fetchVariableGroup.ts",
+    "dashboard": "ts-node src/utils/runDashboard.ts --mode serve",
+    "dashboard:export": "ts-node src/utils/runDashboard.ts --mode export"
   },
   "dependencies": {
     "@cucumber/gherkin": "^38.0.0",

@@ -13,6 +13,11 @@ import { TestPlanService } from "./testPlanService";
 import { FailureTaskService } from "./failureTaskService";
 import { RunOptions } from "./interfaces/RunOptions";
 import { SecretRedactor } from "./utils/SecretRedactor";
+import { DashboardCacheRepository } from "./DashboardCacheRepository";
+import { DashboardDataService } from "./DashboardDataService";
+import { DashboardHtmlGenerator } from "./DashboardHtmlGenerator";
+import { isSafePath } from "./utils/PathUtils";
+import * as fs from "fs";
 
 async function run() {
   const defaultJUnit = path.resolve(process.cwd(), "src/results.xml");
@@ -52,6 +57,24 @@ async function run() {
         demandOption: false,
         default: "{testName}.png",
         describe: "Pattern to match artifacts (e.g., '{testName}.png', 'screenshot-{testName}.jpg')",
+      },
+      "generate-dashboard": {
+        type: "boolean",
+        demandOption: false,
+        default: false,
+        describe: "Generate an interactive HTML dashboard snapshot after publishing the test run",
+      },
+      "dashboard-days": {
+        type: "number",
+        demandOption: false,
+        default: 30,
+        describe: "Lookback window in days when generating the dashboard",
+      },
+      "dashboard-output": {
+        type: "string",
+        demandOption: false,
+        default: "reports/ado-test-runs-dashboard.html",
+        describe: "Output path for generated HTML dashboard",
       },
     })
     .parseSync();
@@ -105,10 +128,49 @@ async function run() {
     autoCloseOnPass: env.autoCloseOnPass,
     artifactsDir: args.artifactsDir,
     artifactPattern: args.artifactPattern,
-    detectFlakyTests: env.detectFlakyTests
+    detectFlakyTests: env.detectFlakyTests,
+    generateDashboard: args.generateDashboard,
+    dashboardDays: args.dashboardDays,
+    dashboardOutput: args.dashboardOutput,
   };
 
   await app.run(runOptions, args.junitFile);
+
+  if (args.generateDashboard) {
+    const days = args.dashboardDays || 30;
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - days * 86400000);
+    const cacheRepo = new DashboardCacheRepository(logger);
+    const dashboardService = new DashboardDataService(
+      cacheRepo,
+      logger,
+      env.orgUrl,
+      env.project,
+      clients.testApi,
+      clients.workItemApi,
+      env.defectType
+    );
+
+    await dashboardService.syncFromAdo(startDate, endDate);
+    const report = dashboardService.buildReport({
+      startDate: startDate.toISOString().slice(0, 10),
+      endDate: endDate.toISOString().slice(0, 10),
+    });
+    const outPath = path.resolve(args.dashboardOutput || "reports/ado-test-runs-dashboard.html");
+    if (isSafePath(outPath, process.cwd())) {
+      const outDir = path.dirname(outPath);
+      if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+      }
+      const html = DashboardHtmlGenerator.generateHtml(report, cacheRepo.load(), {
+        isLiveServer: false,
+      });
+      fs.writeFileSync(outPath, html, "utf-8");
+      logger.log(`📊 Generated ADO Test Runs Insights Dashboard at: ${outPath}`);
+    } else {
+      logger.warn(`⚠️ Unsafe dashboard output path skipped: ${outPath}`);
+    }
+  }
 }
 
 run().catch((err) => {

@@ -71,6 +71,15 @@ The tool intelligently maps results to ADO Test Cases:
 - **Smart Triage**: Analyze historical outcome data (last 7 days) before creating a failure task.
 - **Tagging**: If a test toggles frequently between passing and failing, tag it as "Flaky" and prefix the task title instead of raising it as a standard defect.
 
+### 9. 📊 ADO Test Runs Insights Dashboard
+- **Execution Source Split**: Compares tests executed in **Azure Pipelines** (further broken down into `ADO Test Reporter` vs. `Standard CI`) against tests executed **Directly in ADO** (Manual / Exploratory runs) for any custom Start Date and End Date window.
+- **4 Modern Metric Pillars**:
+  1. *Execution Split & Velocity*: Automation share %, daily/weekly volume trends, and runner sub-source distribution.
+  2. *Quality & Stability*: Overall and per-source pass rates with period-over-period delta (`vs prev window`), plus flaky test oscillation tracking.
+  3. *Actionable Triage & Defect Intelligence*: Active regressions (failing on latest run), recurring failure signatures grouped by SHA-256 `ErrorHash`, and linked ADO Defect coverage %.
+  4. *Execution Performance*: P95/Average run and test case duration leaderboards and Plan/Suite health matrices.
+- **Hybrid Delivery & Local Cache**: Persists fetched ADO runs to `.cache/ado-dashboard-cache.json` for instant offline filtering, serves a live web UI (`npm run dashboard`), and exports 100% self-contained HTML snapshots, CSV reports, and Markdown triage summaries (`npm run dashboard:export`).
+
 ---
 
 ## 🔮 Roadmap: Next Incremental Features
@@ -106,7 +115,7 @@ To support uniform status reporting and quality engineering across the organizat
 ## 🏗️ Architecture
 
 This project follows **SOLID principles** to ensure maintainability and testability:
-- **Service-Oriented**: Distinct services for Configuration (`ConfigService`), Test Plans (`TestPlanService`), Cases (`TestCaseService`), and Sync (`AdoSyncService`).
+- **Service-Oriented**: Distinct services for Configuration (`ConfigService`), Test Plans (`TestPlanService`), Cases (`TestCaseService`), Sync (`AdoSyncService`), and Analytics (`DashboardDataService`, `DashboardCacheRepository`, `DashboardHtmlGenerator`).
 - **Dependency Injection**: All dependencies are injected via interfaces, making the system modular and easy to mock for unit testing.
 - **Orchestrator Pattern**: The main `App` class orchestrates the workflow, keeping the entry point clean.
 
@@ -147,15 +156,30 @@ npm start -- \
   --junit-file src/results.xml \
   --plan-name "Release 1.0" \
   --suite-name "Regression" \
-  --attach-results
+  --attach-results \
+  --generate-dashboard
 ```
 - Use `--plan-name auto-generate` to create a new plan for every run.
+- Add `--generate-dashboard` (and optional `--dashboard-days 30 --dashboard-output reports/dashboard.html`) to export an interactive HTML dashboard after publishing.
 
 #### 2. Sync Feature Files (Gherkin)
 ```bash
 npm run sync-features
 ```
 - Scans `features/**/*.feature` and updates ADO Test Cases tagged with `@TC_ID`.
+
+#### 3. Launch or Export the ADO Test Runs Insights Dashboard
+```bash
+# Start the live interactive dashboard server (with local cache + ADO sync)
+npm run dashboard -- --days 30 --port 4200
+
+# Export a self-contained static HTML, CSV, or Markdown report for a custom date window
+npm run dashboard:export -- \
+  --start-date 2026-10-15 \
+  --end-date 2026-11-09 \
+  --format html \
+  --output reports/ado-test-runs-dashboard.html
+```
 
 ---
 

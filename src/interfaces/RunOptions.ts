@@ -9,4 +9,7 @@ export interface RunOptions {
     artifactsDir?: string;
     artifactPattern?: string;
     detectFlakyTests?: boolean;
+    generateDashboard?: boolean;
+    dashboardDays?: number;
+    dashboardOutput?: string;
 }
