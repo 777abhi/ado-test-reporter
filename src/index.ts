@@ -115,6 +115,7 @@ async function run() {
     env.orgUrl,
     logger,
     env.defectType
+  );
   const quarantineService = new QuarantineService(logger);
   const app = new App(
     testCaseService,

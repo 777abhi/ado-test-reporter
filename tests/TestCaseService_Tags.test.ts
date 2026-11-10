@@ -2,61 +2,44 @@ import { TestCaseService } from "../src/testCaseService";
 import { ILogger } from "../src/interfaces/ILogger";
 
 class MockLogger implements ILogger {
-    log(message: string): void { console.log(message); }
-    warn(message: string): void { console.warn(message); }
-    error(message: string): void { console.error(message); }
+  log(_message: string): void {}
+  warn(_message: string): void {}
+  error(_message: string): void {}
 }
 
 class MockWorkItemTrackingApi {
-    public updateWorkItemCalled = false;
-    public updatedTags: string | undefined;
+  public updateWorkItemCalled = false;
+  public updatedTags: string | undefined;
 
-    async updateWorkItem(customHeaders: any, document: any[], id: number, project: string) {
-        this.updateWorkItemCalled = true;
-        const tagOp = document.find((op: any) => op.path === "/fields/System.Tags");
-        if (tagOp) {
-            this.updatedTags = tagOp.value;
-        }
-        return { id, rev: 2 };
+  async updateWorkItem(_customHeaders: any, document: any[], id: number, _project: string) {
+    this.updateWorkItemCalled = true;
+    const tagOp = document.find((op: any) => op.path === "/fields/System.Tags");
+    if (tagOp) {
+      this.updatedTags = tagOp.value;
     }
-    // minimal implementation for other calls
-    async getWorkItem(id: number) { return { id: 123, rev: 1 }; }
+    return { id, rev: 2 };
+  }
+
+  async getWorkItem(id: number) { return { id, rev: 1 }; }
 }
 
-async function runTest() {
+describe("TestCaseService Tags Sanitization", () => {
+  it("should sanitize individual tags in semicolon-delimited lists against CSV/formula injection", async () => {
     const mockApi = new MockWorkItemTrackingApi();
     const service = new TestCaseService(
-        mockApi as any,
-        "Project",
-        false,
-        false,
-        new MockLogger()
+      mockApi as any,
+      "Project",
+      false,
+      false,
+      new MockLogger()
     );
 
-    console.log("Testing with multiple tags, one malicious...");
     const maliciousTags = "tag1; =cmd";
-
     await service.updateTestCase(123, {
-        "System.Tags": maliciousTags
+      "System.Tags": maliciousTags,
     });
 
-    if (!mockApi.updateWorkItemCalled) {
-        throw new Error("updateWorkItem was not called!");
-    }
-
-    console.log("Updated Tags:", mockApi.updatedTags);
-
-    // Expectation: tag1; '=cmd
-    // Currently, it returns "tag1; =cmd" because sanitizeForCsv sees 't' as first char.
-    if (mockApi.updatedTags === "tag1; =cmd") {
-        throw new Error("FAIL: Malicious tag was NOT sanitized!");
-    }
-
-    if (mockApi.updatedTags === "tag1; '=cmd") {
-        console.log("PASS: Malicious tag sanitized.");
-    } else {
-        throw new Error(`FAIL: Unexpected output: ${mockApi.updatedTags}`);
-    }
-}
-
-runTest();
+    expect(mockApi.updateWorkItemCalled).toBe(true);
+    expect(mockApi.updatedTags).toBe("tag1; '=cmd");
+  });
+});

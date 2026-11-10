@@ -196,6 +196,24 @@ Add this as a task in `azure-pipelines.yml`:
     ADO_ORG_URL: $(System.TeamFoundationCollectionUri)
     ADO_PROJECT: $(System.TeamProject)
   displayName: 'Publish Results to ADO'
+---
+
+## 🧪 Testing & Quality Assurance
+
+The codebase includes comprehensive unit and integration test suites covering all core workflows, edge cases, and security controls:
+
+```bash
+# Run all unit and integration test suites via Jest
+npm test
+
+# Generate code coverage reports (text, lcov, cobertura)
+npm run test:coverage
+
+# Run tests in CI mode (outputs test-results/junit.xml for pipeline publishing)
+npm run test:ci
+
+# Run TypeScript type check
+npm run typecheck
 ```
 
 ---

@@ -1,12 +1,18 @@
-import * as fs from 'fs';
-import * as assert from 'assert';
-import { JUnitParser } from '../src/junitParser';
-import * as path from 'path';
+import * as fs from "fs";
+import * as path from "path";
+import { JUnitParser } from "../src/junitParser";
 
-async function testLimits() {
+describe("JUnitParser Limits & Truncation", () => {
+  const filePath = path.resolve(__dirname, "temp_large_junit.xml");
+
+  afterEach(() => {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  });
+
+  it("should truncate oversized error messages and ignore oversized attachments", async () => {
     const parser = new JUnitParser();
-    const largeError = "A".repeat(10000); // 10KB
-    const longAttachment = "B".repeat(5000); // 5KB
+    const largeError = "A".repeat(10000);
+    const longAttachment = "B".repeat(5000);
 
     const xml = `
 <testsuites>
@@ -21,48 +27,19 @@ async function testLimits() {
 </testsuites>
 `;
 
-    const filePath = path.resolve(__dirname, 'temp_large_junit.xml');
     fs.writeFileSync(filePath, xml);
 
-    try {
-        console.log("Parsing XML...");
-        const results = await parser.parse(filePath);
-        const errorCase = results.find(r => r.name === 'TestLimitError');
-        const attachCase = results.find(r => r.name === 'TestLimitAttachment');
+    const results = await parser.parse(filePath);
+    const errorCase = results.find((r) => r.name === "TestLimitError");
+    const attachCase = results.find((r) => r.name === "TestLimitAttachment");
 
-        console.log(`Error Message Length: ${errorCase?.errorMessage?.length}`);
-        console.log(`Attachments Found: ${attachCase?.attachments?.length}`);
+    expect(errorCase?.errorMessage).toBeDefined();
+    expect(errorCase!.errorMessage!.length).toBeLessThanOrEqual(4096);
 
-        // Verification logic
-        if (!errorCase?.errorMessage) {
-            throw new Error("FAIL: Error message not found.");
-        }
-
-        if (errorCase.errorMessage.length > 4096) {
-             throw new Error("FAIL (Current Behavior): Error message was NOT truncated.");
-        }
-        console.log("✅ PASS: Error message truncated.");
-        assert.ok(errorCase.errorMessage.length <= 4096, "Error message should be <= 4096 chars");
-
-        if (attachCase?.attachments && attachCase.attachments.length > 0) {
-             const firstAttach = attachCase.attachments[0];
-             if (firstAttach.length > 4096) {
-                 throw new Error("FAIL (Current Behavior): Long attachment was matched.");
-             }
-             console.log("✅ PASS: Long attachment ignored/truncated.");
-        } else {
-             console.log("✅ PASS: Long attachment ignored (no match).");
-        }
-
-    } catch (e) {
-        console.error("❌ Test Failed:", e);
-        throw e;
-    } finally {
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (attachCase?.attachments && attachCase.attachments.length > 0) {
+      expect(attachCase.attachments[0].length).toBeLessThanOrEqual(4096);
+    } else {
+      expect(attachCase?.attachments?.length || 0).toBe(0);
     }
-}
-
-// Execute if run directly
-if (require.main === module) {
-    testLimits().catch(() => process.exit(1));
-}
+  });
+});

@@ -1,155 +1,119 @@
-
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import { ExcelImportService } from '../src/ExcelImportService';
-import { ITestCaseService, TestCaseInfo } from '../src/interfaces/ITestCaseService';
-import { ITestPlanService, PlanSuiteInfo, SuiteInfo, TestCaseResultWithAttachments } from '../src/interfaces/ITestPlanService';
-import { ILogger } from '../src/interfaces/ILogger';
-import { IExcelParser } from '../src/interfaces/IExcelParser';
-import { TestCaseResult } from 'azure-devops-node-api/interfaces/TestInterfaces';
+import * as fs from "fs";
+import * as path from "path";
+import { ExcelImportService } from "../src/ExcelImportService";
+import { ITestCaseService, TestCaseInfo } from "../src/interfaces/ITestCaseService";
+import { ITestPlanService, PlanSuiteInfo, SuiteInfo, TestCaseResultWithAttachments } from "../src/interfaces/ITestPlanService";
+import { ILogger } from "../src/interfaces/ILogger";
+import { IExcelParser } from "../src/interfaces/IExcelParser";
+import { TestCaseResult } from "azure-devops-node-api/interfaces/TestInterfaces";
 
 class MockLogger implements ILogger {
-    log(message: string): void {}
-    warn(message: string): void {}
-    error(message: string): void {}
+  log(_message: string): void {}
+  warn(_message: string): void {}
+  error(_message: string): void {}
 }
 
 class MockTestPlanService implements ITestPlanService {
-    async ensurePlan(planName: string): Promise<PlanSuiteInfo> {
-        return { planId: 1, rootSuiteId: 10 };
-    }
-    async ensureSuite(planId: number, planRootSuiteId: number | undefined, suiteName: string): Promise<SuiteInfo> {
-        return { suiteId: 20 };
-    }
-    async linkTestCasesToSuite(planId: number, suiteId: number, testCaseIds: string[]): Promise<void> {}
-    async mapPointsToResults(planId: number, suiteId: number, results: TestCaseResult[]): Promise<number[]> {
-        return [];
-    }
-    async createRunAndPublish(
-        planId: number,
-        suiteName: string,
-        buildId: number,
-        buildNumber: string,
-        results: TestCaseResultWithAttachments[],
-        pointIds: number[],
-        attachmentPath?: string
-    ): Promise<{ runId: number; runUrl: string }> {
-        return { runId: 100, runUrl: 'http://run' };
-    }
-    async isTestFlaky(testCaseId: number, testName: string): Promise<boolean> {
-        return false;
-    }
+  async ensurePlan(_planName: string): Promise<PlanSuiteInfo> {
+    return { planId: 1, rootSuiteId: 10 };
+  }
+  async ensureSuite(_planId: number, _planRootSuiteId: number | undefined, _suiteName: string): Promise<SuiteInfo> {
+    return { suiteId: 20 };
+  }
+  async linkTestCasesToSuite(_planId: number, _suiteId: number, _testCaseIds: string[]): Promise<void> {}
+  async mapPointsToResults(_planId: number, _suiteId: number, _results: TestCaseResult[]): Promise<number[]> {
+    return [];
+  }
+  async createRunAndPublish(
+    _planId: number,
+    _suiteName: string,
+    _buildId: number,
+    _buildNumber: string,
+    _results: TestCaseResultWithAttachments[],
+    _pointIds: number[],
+    _attachmentPath?: string
+  ): Promise<{ runId: number; runUrl: string }> {
+    return { runId: 100, runUrl: "http://run" };
+  }
+  async isTestFlaky(_testCaseId: number, _testName: string): Promise<boolean> {
+    return false;
+  }
 }
 
 class MockTestCaseService implements ITestCaseService {
-    public updatedFields: Record<string, any> | undefined;
-    public getHtmlFieldsCalled = false;
+  public updatedFields: Record<string, any> | undefined;
+  public getHtmlFieldsCalled = false;
 
-    async resolve(testName: string, candidateId?: string | null): Promise<TestCaseInfo> {
-        return { id: 101, revision: 1, title: "TC1" };
-    }
-    async updateTestCase(testCaseId: number, fields: Record<string, any>): Promise<void> {
-        this.updatedFields = fields;
-    }
-    async linkRequirementsById(testCaseId: number, requirementIds: number[]): Promise<void> {}
-    async getTestCase(id: number): Promise<TestCaseInfo | null> {
-        return { id: 101, revision: 1, title: "TC1" };
-    }
-    async getHtmlFields(): Promise<Set<string>> {
-        this.getHtmlFieldsCalled = true;
-        // Mock returning a custom HTML field
-        return new Set(["Custom.MyHtmlField"]);
-    }
+  async resolve(_testName: string, _candidateId?: string | null): Promise<TestCaseInfo> {
+    return { id: 101, revision: 1, title: "TC1" };
+  }
+  async updateTestCase(_testCaseId: number, fields: Record<string, any>): Promise<void> {
+    this.updatedFields = fields;
+  }
+  async linkRequirementsById(_testCaseId: number, _requirementIds: number[]): Promise<void> {}
+  async getTestCase(_id: number): Promise<TestCaseInfo | null> {
+    return { id: 101, revision: 1, title: "TC1" };
+  }
+  async getHtmlFields(): Promise<Set<string>> {
+    this.getHtmlFieldsCalled = true;
+    return new Set(["Custom.MyHtmlField"]);
+  }
 }
 
 class MockExcelParser implements IExcelParser {
-    parse(filePath: string): any[] {
-        // Return rows simulating Excel content
-        return [
-            {
-                "ID": "101",
-                "Title": "TC1",
-                "MyHtml": "<script>alert('xss')</script>",
-                "MyPlain": "<script>alert('plain')</script>"
-            }
-        ];
-    }
+  parse(_filePath: string): any[] {
+    return [
+      {
+        ID: "101",
+        Title: "TC1",
+        MyHtml: "<script>alert('xss')</script>",
+        MyPlain: "<script>alert('plain')</script>",
+      },
+    ];
+  }
 }
 
-async function runTest() {
-    console.log("---------------------------------------------------");
-    console.log("Running ExcelImportService Security Test (HTML Fields)");
-    console.log("---------------------------------------------------");
+describe("ExcelImportService HTML Fields Security", () => {
+  const mappingPath = path.resolve(__dirname, "temp_mapping_html_test.json");
 
+  afterEach(() => {
+    if (fs.existsSync(mappingPath)) {
+      fs.unlinkSync(mappingPath);
+    }
+  });
+
+  it("should dynamically fetch HTML fields and sanitize them while leaving plain fields safe", async () => {
     const logger = new MockLogger();
     const planService = new MockTestPlanService();
     const parser = new MockExcelParser();
     const tcService = new MockTestCaseService();
 
-    // Create a temporary mapping file
-    const mappingPath = path.resolve(__dirname, 'temp_mapping.json');
     const mapping = {
-        "System.Id": "ID",
-        "System.Title": "Title",
-        "Custom.MyHtmlField": "MyHtml",  // This field should be sanitized because getHtmlFields returns it
-        "Custom.MyPlainField": "MyPlain" // This field should NOT be sanitized (treated as plain text)
+      "System.Id": "ID",
+      "System.Title": "Title",
+      "Custom.MyHtmlField": "MyHtml",
+      "Custom.MyPlainField": "MyPlain",
     };
     fs.writeFileSync(mappingPath, JSON.stringify(mapping));
 
-    try {
-        const service = new ExcelImportService(
-            tcService,
-            planService,
-            logger,
-            parser,
-            [] // No manual HTML fields passed
-        );
+    const service = new ExcelImportService(
+      tcService,
+      planService,
+      logger,
+      parser,
+      []
+    );
 
-        await service.importTestCases("dummy.xlsx", mappingPath, "Plan", "Suite");
+    await service.importTestCases("dummy.xlsx", mappingPath, "Plan", "Suite");
 
-        // Verification 1: getHtmlFields was called
-        if (!tcService.getHtmlFieldsCalled) {
-            throw new Error("FAIL: getHtmlFields() was NOT called.");
-        }
-        console.log("✅ PASS: getHtmlFields() was called dynamically.");
+    expect(tcService.getHtmlFieldsCalled).toBe(true);
+    expect(tcService.updatedFields).toBeDefined();
 
-        // Verification 2: Check sanitization
-        const fields = tcService.updatedFields;
-        if (!fields) {
-            throw new Error("FAIL: updateTestCase was not called.");
-        }
+    const htmlVal = tcService.updatedFields!["Custom.MyHtmlField"];
+    const plainVal = tcService.updatedFields!["Custom.MyPlainField"];
 
-        const htmlVal = fields["Custom.MyHtmlField"];
-        const plainVal = fields["Custom.MyPlainField"];
-
-        console.log(`[DEBUG] HTML Value: ${htmlVal}`);
-        console.log(`[DEBUG] Plain Value: ${plainVal}`);
-
-        // HTML field MUST be escaped
-        if (!htmlVal.includes("&lt;script&gt;") || htmlVal.includes("<script>")) {
-            throw new Error(`FAIL: HTML field was not sanitized! Value: ${htmlVal}`);
-        }
-        console.log("✅ PASS: HTML field was correctly sanitized.");
-
-        // Plain field should REMAIN as is (ADO treats it as plain text)
-        // If we sanitize everything, this would be escaped too.
-        // But current logic only sanitizes KNOWN HTML fields.
-        if (plainVal !== "<script>alert('plain')</script>") {
-            console.warn("⚠️ Plain text field was modified. This might be intentional if policy changed to sanitize everything, but expected behavior was preserving text.");
-        } else {
-            console.log("✅ PASS: Plain text field preserved (safe for text fields).");
-        }
-
-    } finally {
-        if (fs.existsSync(mappingPath)) fs.unlinkSync(mappingPath);
-    }
-}
-
-// Execute
-if (require.main === module) {
-    runTest().catch(e => {
-        console.error(e);
-        process.exit(1);
-    });
-}
+    expect(htmlVal).toContain("&lt;script&gt;");
+    expect(htmlVal).not.toContain("<script>");
+    expect(plainVal).toBe("<script>alert('plain')</script>");
+  });
+});

@@ -11,7 +11,10 @@
     "dashboard": "ts-node src/utils/runDashboard.ts --mode serve",
     "dashboard:export": "ts-node src/utils/runDashboard.ts --mode export",
     "quarantine": "ts-node src/utils/quarantineCli.ts",
-    "test": "ts-node tests/QuarantineService.test.ts && ts-node tests/AppQuarantineIntegration.test.ts && ts-node tests/DashboardDataService.test.ts"
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --reporters=default --reporters=jest-junit --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@cucumber/gherkin": "^38.0.0",
@@ -27,9 +30,13 @@
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.19.35",
     "@types/xml2js": "^0.4.11",
     "@types/yargs": "^17.0.24",
+    "jest": "^30.5.2",
+    "jest-junit": "^17.0.0",
+    "ts-jest": "^29.4.15",
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
   }
