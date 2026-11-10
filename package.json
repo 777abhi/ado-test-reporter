@@ -9,7 +9,9 @@
     "import-excel": "ts-node src/utils/importExcel.ts",
     "fetch-variable-group": "ts-node src/utils/fetchVariableGroup.ts",
     "dashboard": "ts-node src/utils/runDashboard.ts --mode serve",
-    "dashboard:export": "ts-node src/utils/runDashboard.ts --mode export"
+    "dashboard:export": "ts-node src/utils/runDashboard.ts --mode export",
+    "quarantine": "ts-node src/utils/quarantineCli.ts",
+    "test": "ts-node tests/QuarantineService.test.ts && ts-node tests/AppQuarantineIntegration.test.ts && ts-node tests/DashboardDataService.test.ts"
   },
   "dependencies": {
     "@cucumber/gherkin": "^38.0.0",

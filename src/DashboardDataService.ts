@@ -20,15 +20,21 @@ import {
   SlowTestInsight,
   SourceBreakdownStats,
   TrendBucket,
+  QuarantineDashboardSection,
+  TestReliabilityMetric,
 } from "./interfaces/IDashboardService";
 import { ILogger } from "./interfaces/ILogger";
 import { DashboardCacheRepository } from "./DashboardCacheRepository";
 import { sanitizeForCsv } from "./utils/CsvUtils";
 import { escapeWiqlString } from "./utils/WiqlUtils";
+import { IQuarantineService } from "./interfaces/IQuarantineService";
+import { QuarantineService } from "./QuarantineService";
 
 const TC_ID_REGEX = /TC(\d+)/i;
 
 export class DashboardDataService implements IDashboardService {
+  private quarantineService: IQuarantineService;
+
   constructor(
     private cacheRepo: IDashboardCacheRepository,
     private logger: ILogger,
@@ -36,8 +42,11 @@ export class DashboardDataService implements IDashboardService {
     private project: string = "SampleProject",
     private testApi?: ITestApi,
     private workItemApi?: IWorkItemTrackingApi,
-    private defectType: string = "Task"
-  ) {}
+    private defectType: string = "Task",
+    quarantineService?: IQuarantineService
+  ) {
+    this.quarantineService = quarantineService || new QuarantineService(this.logger);
+  }
 
   static classifyExecutionSource(rawRun: {
     name?: string;
@@ -557,6 +566,9 @@ export class DashboardDataService implements IDashboardService {
       flakyTests
     );
 
+    // Quarantine & Reliability Metrics (MTTR & MTBF)
+    const quarantine = this.computeReliabilityAndQuarantineMetrics(filteredRuns);
+
     // Available filter options from all cached runs
     const plansSet = new Set<string>();
     const buildsSet = new Set<string>();
@@ -600,6 +612,12 @@ export class DashboardDataService implements IDashboardService {
         p95RunDurationMs: overallStats.p95RunDurationMs,
         avgTestDurationMs: overallStats.avgTestDurationMs,
         p95TestDurationMs: overallStats.p95TestDurationMs,
+        quarantinedTestCount: quarantine.totalQuarantined,
+        graduationCandidatesCount: quarantine.graduationCandidatesCount,
+        overallMttrHours: quarantine.overallMttrHours,
+        overallMttrRuns: quarantine.overallMttrRuns,
+        overallMtbfHours: quarantine.overallMtbfHours,
+        overallMtbfRuns: quarantine.overallMtbfRuns,
       },
       sourceComparison: {
         pipeline: pipelineStats,
@@ -618,6 +636,7 @@ export class DashboardDataService implements IDashboardService {
         flakyTests,
         slowestTests,
       },
+      quarantine,
       availableFilters: {
         plans: Array.from(plansSet).sort(),
         builds: Array.from(buildsSet).sort(),
@@ -841,6 +860,225 @@ export class DashboardDataService implements IDashboardService {
       (a, b) =>
         b.oscillationCount - a.oscillationCount || b.failCount - a.failCount
     );
+  }
+
+  private computeReliabilityAndQuarantineMetrics(
+    runs: DashboardRunRecord[]
+  ): QuarantineDashboardSection {
+    const chronologicalRuns = [...runs].sort(
+      (a, b) =>
+        new Date(a.completedDate || a.startedDate).getTime() -
+        new Date(b.completedDate || b.startedDate).getTime()
+    );
+
+    const testMap = new Map<
+      string,
+      {
+        testKey: string;
+        testCaseId?: string;
+        testCaseTitle: string;
+        executions: { completedDate: number; outcome: NormalizedOutcome; runId: number }[];
+      }
+    >();
+
+    for (const run of chronologicalRuns) {
+      const runTime = new Date(run.completedDate || run.startedDate).getTime();
+      for (const res of run.results) {
+        const key = res.testCaseId ? `TC${res.testCaseId}` : (res.testCaseTitle || String(res.resultId));
+        let entry = testMap.get(key);
+        if (!entry) {
+          entry = {
+            testKey: key,
+            testCaseId: res.testCaseId,
+            testCaseTitle: res.testCaseTitle,
+            executions: [],
+          };
+          testMap.set(key, entry);
+        }
+        const execTime = res.completedDate ? new Date(res.completedDate).getTime() : runTime;
+        entry.executions.push({
+          completedDate: execTime,
+          outcome: res.outcome,
+          runId: run.runId,
+        });
+      }
+    }
+
+    const reliabilityList: TestReliabilityMetric[] = [];
+    let totalRecoveryDurationHours = 0;
+    let totalRecoveryRuns = 0;
+    let totalRecoveryEpisodes = 0;
+
+    let totalTbfDurationHours = 0;
+    let totalTbfRuns = 0;
+    let totalTbfEpisodes = 0;
+
+    const activeQuarantined = this.quarantineService
+      ? this.quarantineService.listActiveQuarantined()
+      : [];
+    const graduationCandidates = this.quarantineService
+      ? this.quarantineService.getGraduationCandidates()
+      : [];
+
+    for (const [key, test] of testMap.entries()) {
+      let failCount = 0;
+      let passCount = 0;
+      let recoveryCount = 0;
+      let flipCount = 0;
+
+      let inFailureEpisode = false;
+      let firstFailureTime = 0;
+      let runsInEpisode = 0;
+      let lastRecoveryTime = test.executions.length > 0 ? test.executions[0].completedDate : 0;
+      let runsSinceLastRecovery = 0;
+
+      const testRecoveryHours: number[] = [];
+      const testRecoveryRuns: number[] = [];
+      const testTbfHours: number[] = [];
+      const testTbfRuns: number[] = [];
+
+      let prevOutcome: NormalizedOutcome | null = null;
+
+      for (const exec of test.executions) {
+        if (exec.outcome === "Passed") passCount++;
+        if (exec.outcome === "Failed") failCount++;
+
+        if (prevOutcome !== null && prevOutcome !== exec.outcome) {
+          if (
+            (prevOutcome === "Passed" && exec.outcome === "Failed") ||
+            (prevOutcome === "Failed" && exec.outcome === "Passed")
+          ) {
+            flipCount++;
+          }
+        }
+
+        if (exec.outcome === "Failed") {
+          if (!inFailureEpisode) {
+            inFailureEpisode = true;
+            firstFailureTime = exec.completedDate;
+            runsInEpisode = 1;
+
+            if (lastRecoveryTime > 0 && exec.completedDate > lastRecoveryTime) {
+              const tbfHours = Math.max(0.1, (exec.completedDate - lastRecoveryTime) / (1000 * 3600));
+              testTbfHours.push(tbfHours);
+              testTbfRuns.push(Math.max(1, runsSinceLastRecovery));
+              totalTbfDurationHours += tbfHours;
+              totalTbfRuns += Math.max(1, runsSinceLastRecovery);
+              totalTbfEpisodes++;
+            }
+          } else {
+            runsInEpisode++;
+          }
+        } else if (exec.outcome === "Passed") {
+          if (inFailureEpisode) {
+            inFailureEpisode = false;
+            recoveryCount++;
+            const ttrHours = Math.max(0.1, (exec.completedDate - firstFailureTime) / (1000 * 3600));
+            testRecoveryHours.push(ttrHours);
+            testRecoveryRuns.push(runsInEpisode);
+            totalRecoveryDurationHours += ttrHours;
+            totalRecoveryRuns += runsInEpisode;
+            totalRecoveryEpisodes++;
+
+            lastRecoveryTime = exec.completedDate;
+            runsSinceLastRecovery = 0;
+          } else {
+            runsSinceLastRecovery++;
+          }
+        }
+
+        prevOutcome = exec.outcome;
+      }
+
+      const totalExec = test.executions.length;
+      const avgMttrHours =
+        testRecoveryHours.length > 0
+          ? Number((testRecoveryHours.reduce((a, b) => a + b, 0) / testRecoveryHours.length).toFixed(1))
+          : 0;
+      const avgMttrRuns =
+        testRecoveryRuns.length > 0
+          ? Number((testRecoveryRuns.reduce((a, b) => a + b, 0) / testRecoveryRuns.length).toFixed(1))
+          : 0;
+      const avgMtbfHours =
+        testTbfHours.length > 0
+          ? Number((testTbfHours.reduce((a, b) => a + b, 0) / testTbfHours.length).toFixed(1))
+          : 0;
+      const avgMtbfRuns =
+        testTbfRuns.length > 0
+          ? Number((testTbfRuns.reduce((a, b) => a + b, 0) / testTbfRuns.length).toFixed(1))
+          : 0;
+
+      const failRatio = totalExec > 0 ? (failCount / totalExec) * 100 : 0;
+      const flipRatio = totalExec > 0 ? (flipCount / totalExec) * 100 : 0;
+      const stabilityScorePct = Math.round(
+        Math.max(0, Math.min(100, 100 - (failRatio * 0.6 + flipRatio * 0.4)))
+      );
+
+      const isQuarantined = this.quarantineService
+        ? this.quarantineService.isQuarantined(test.testCaseId, test.testCaseTitle)
+        : false;
+      const quarantineRecord = this.quarantineService
+        ? this.quarantineService.getQuarantinedTest(test.testCaseId, test.testCaseTitle)
+        : undefined;
+
+      const isReadyForGraduation = Boolean(
+        quarantineRecord &&
+          quarantineRecord.status === "active" &&
+          quarantineRecord.consecutivePasses >= quarantineRecord.healingThreshold
+      );
+
+      reliabilityList.push({
+        testKey: key,
+        testCaseId: test.testCaseId,
+        testCaseTitle: test.testCaseTitle,
+        totalExecutions: totalExec,
+        failCount,
+        passCount,
+        recoveryCount,
+        mttrHours: avgMttrHours,
+        mttrRuns: avgMttrRuns,
+        mtbfHours: avgMtbfHours,
+        mtbfRuns: avgMtbfRuns,
+        stabilityScorePct,
+        isQuarantined,
+        quarantineRecord,
+        isReadyForGraduation,
+      });
+    }
+
+    reliabilityList.sort((a, b) => {
+      if (a.isQuarantined !== b.isQuarantined) return a.isQuarantined ? -1 : 1;
+      return a.stabilityScorePct - b.stabilityScorePct;
+    });
+
+    const overallMttrHours =
+      totalRecoveryEpisodes > 0
+        ? Number((totalRecoveryDurationHours / totalRecoveryEpisodes).toFixed(1))
+        : 0;
+    const overallMttrRuns =
+      totalRecoveryEpisodes > 0
+        ? Number((totalRecoveryRuns / totalRecoveryEpisodes).toFixed(1))
+        : 0;
+    const overallMtbfHours =
+      totalTbfEpisodes > 0
+        ? Number((totalTbfDurationHours / totalTbfEpisodes).toFixed(1))
+        : 0;
+    const overallMtbfRuns =
+      totalTbfEpisodes > 0
+        ? Number((totalTbfRuns / totalTbfEpisodes).toFixed(1))
+        : 0;
+
+    return {
+      totalQuarantined: activeQuarantined.length,
+      graduationCandidatesCount: graduationCandidates.length,
+      overallMttrHours,
+      overallMttrRuns,
+      overallMtbfHours,
+      overallMtbfRuns,
+      activeQuarantined,
+      graduationCandidates,
+      reliabilityLeaderboard: reliabilityList,
+    };
   }
 
   private computeNewRegressions(runs: DashboardRunRecord[]): RegressionInsight[] {
@@ -1504,6 +1742,46 @@ export class DashboardDataService implements IDashboardService {
         );
       }
       lines.push("");
+    }
+
+    if (report.quarantine) {
+      const q = report.quarantine;
+      lines.push(`## 3. Stability, Reliability & Quarantine`);
+      lines.push(`- 🛡️ **Active Quarantined Tests:** ${q.totalQuarantined}`);
+      lines.push(`- 🎓 **Graduation Candidates (Streak Met):** ${q.graduationCandidatesCount}`);
+      lines.push(
+        `- ⏱️ **Mean Time to Recovery (MTTR):** ${q.overallMttrHours} hrs (${q.overallMttrRuns} runs)`
+      );
+      lines.push(
+        `- 🔁 **Mean Time Between Failures (MTBF):** ${q.overallMtbfHours} hrs (${q.overallMtbfRuns} runs)`
+      );
+      lines.push("");
+
+      if (q.activeQuarantined.length > 0) {
+        lines.push(`### 🛡️ Active Quarantined Tests`);
+        lines.push(`| Test Case | Quarantined By | Streak | Threshold | Reason |`);
+        lines.push(`| :--- | :---: | :---: | :---: | :--- |`);
+        for (const aq of q.activeQuarantined) {
+          const idStr = aq.testCaseId ? `TC${aq.testCaseId}` : aq.testKey;
+          lines.push(
+            `| [${idStr}] ${aq.testCaseTitle} | ${aq.quarantinedBy || "N/A"} | ${aq.consecutivePasses} passes | ${aq.healingThreshold} | ${aq.reason} |`
+          );
+        }
+        lines.push("");
+      }
+
+      if (q.graduationCandidates.length > 0) {
+        lines.push(`### 🎓 Graduation Candidates (Ready to Unquarantine)`);
+        lines.push(`| Test Case | Streak / Threshold | Quarantined Date | Status |`);
+        lines.push(`| :--- | :---: | :---: | :---: |`);
+        for (const gc of q.graduationCandidates) {
+          const idStr = gc.test.testCaseId ? `TC${gc.test.testCaseId}` : gc.test.testKey;
+          lines.push(
+            `| [${idStr}] ${gc.test.testCaseTitle} | ${gc.consecutivePasses}/${gc.healingThreshold} | ${gc.test.quarantinedAt.slice(0, 10)} | 🟢 Ready for Graduation |`
+          );
+        }
+        lines.push("");
+      }
     }
 
     return lines.join("\n");

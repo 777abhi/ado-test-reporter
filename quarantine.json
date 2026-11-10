@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "lastUpdated": "2026-11-10T18:44:13.872Z",
+  "quarantinedTests": [
+    {
+      "testKey": "TC1015",
+      "testCaseId": "1015",
+      "testCaseTitle": "Checkout_PaymentGateway_Timeout_TC1015",
+      "quarantinedAt": "2026-11-10T18:44:13.872Z",
+      "quarantinedBy": "qa-lead",
+      "reason": "Flaky payment gateway socket timeouts",
+      "consecutivePasses": 0,
+      "healingThreshold": 5,
+      "status": "active"
+    }
+  ]
+}

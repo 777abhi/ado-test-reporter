@@ -16,6 +16,7 @@ import { SecretRedactor } from "./utils/SecretRedactor";
 import { DashboardCacheRepository } from "./DashboardCacheRepository";
 import { DashboardDataService } from "./DashboardDataService";
 import { DashboardHtmlGenerator } from "./DashboardHtmlGenerator";
+import { QuarantineService } from "./QuarantineService";
 import { isSafePath } from "./utils/PathUtils";
 import * as fs from "fs";
 
@@ -114,9 +115,15 @@ async function run() {
     env.orgUrl,
     logger,
     env.defectType
+  const quarantineService = new QuarantineService(logger);
+  const app = new App(
+    testCaseService,
+    testPlanService,
+    failureTaskService,
+    parser,
+    logger,
+    quarantineService
   );
-
-  const app = new App(testCaseService, testPlanService, failureTaskService, parser, logger);
 
   const runOptions: RunOptions = {
     planName: args.planName,

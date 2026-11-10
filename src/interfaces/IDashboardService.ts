@@ -1,3 +1,5 @@
+import { GraduationCandidate, QuarantinedTestRecord } from "./IQuarantineService";
+
 export type ExecutionSource = "pipeline" | "direct_ado";
 
 export type ExecutionSubSource =
@@ -200,6 +202,36 @@ export interface SlowTestInsight {
   testCaseUrl?: string;
 }
 
+export interface TestReliabilityMetric {
+  testKey: string;
+  testCaseId?: string;
+  testCaseTitle: string;
+  totalExecutions: number;
+  failCount: number;
+  passCount: number;
+  recoveryCount: number;
+  mttrHours: number;
+  mttrRuns: number;
+  mtbfHours: number;
+  mtbfRuns: number;
+  stabilityScorePct: number;
+  isQuarantined: boolean;
+  quarantineRecord?: QuarantinedTestRecord;
+  isReadyForGraduation?: boolean;
+}
+
+export interface QuarantineDashboardSection {
+  totalQuarantined: number;
+  graduationCandidatesCount: number;
+  overallMttrHours: number;
+  overallMttrRuns: number;
+  overallMtbfHours: number;
+  overallMtbfRuns: number;
+  activeQuarantined: QuarantinedTestRecord[];
+  graduationCandidates: GraduationCandidate[];
+  reliabilityLeaderboard: TestReliabilityMetric[];
+}
+
 export interface DashboardKpis {
   totalRuns: number;
   pipelineRuns: number;
@@ -224,6 +256,12 @@ export interface DashboardKpis {
   p95RunDurationMs: number;
   avgTestDurationMs: number;
   p95TestDurationMs: number;
+  quarantinedTestCount: number;
+  graduationCandidatesCount: number;
+  overallMttrHours: number;
+  overallMttrRuns: number;
+  overallMtbfHours: number;
+  overallMtbfRuns: number;
 }
 
 export interface DashboardInsightsReport {
@@ -258,6 +296,7 @@ export interface DashboardInsightsReport {
     flakyTests: FlakyTestInsight[];
     slowestTests: SlowTestInsight[];
   };
+  quarantine?: QuarantineDashboardSection;
   availableFilters: {
     plans: string[];
     builds: string[];

@@ -196,6 +196,39 @@ export class DashboardHtmlGenerator {
       border: 1px solid rgba(168, 85, 247, 0.35);
     }
 
+    .badge-quarantine {
+      background: rgba(168, 85, 247, 0.18);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.4);
+    }
+
+    .btn-sm {
+      padding: 4px 9px;
+      font-size: 11.5px;
+      border-radius: 6px;
+    }
+
+    .btn-pass {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-pass:hover {
+      background: rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border-color: rgba(148, 163, 184, 0.2);
+      color: var(--text-secondary);
+    }
+
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+    }
+
     .header-actions {
       display: flex;
       align-items: center;
@@ -858,6 +891,9 @@ export class DashboardHtmlGenerator {
         <button class="tab-btn" id="tabBtn-performance" onclick="switchTab('performance')">
           ⚡ Slowest Tests &amp; Suite Health <span class="tab-count" id="count-performance">0</span>
         </button>
+        <button class="tab-btn" id="tabBtn-quarantine" onclick="switchTab('quarantine')">
+          🛡️ Stability &amp; Quarantine <span class="tab-count" id="count-quarantine">0</span>
+        </button>
       </div>
       <div style="font-size: 12px; color: var(--text-secondary);">
         💡 Click any Test Run row to expand individual test case outcomes, error traces, and ADO links.
@@ -1324,6 +1360,12 @@ export class DashboardHtmlGenerator {
           p95RunDurationMs: oStats.p95RunDurationMs,
           avgTestDurationMs: oStats.avgTestDurationMs,
           p95TestDurationMs: oStats.p95TestDurationMs,
+          quarantinedTestCount: currentReport.kpis ? currentReport.kpis.quarantinedTestCount : 0,
+          graduationCandidatesCount: currentReport.kpis ? currentReport.kpis.graduationCandidatesCount : 0,
+          overallMttrHours: currentReport.kpis ? currentReport.kpis.overallMttrHours : 0,
+          overallMttrRuns: currentReport.kpis ? currentReport.kpis.overallMttrRuns : 0,
+          overallMtbfHours: currentReport.kpis ? currentReport.kpis.overallMtbfHours : 0,
+          overallMtbfRuns: currentReport.kpis ? currentReport.kpis.overallMtbfRuns : 0,
         },
         sourceComparison: {
           pipeline: pStats,
@@ -1342,6 +1384,7 @@ export class DashboardHtmlGenerator {
           flakyTests,
           slowestTests,
         },
+        quarantine: currentReport.quarantine,
         runs: filtered,
       };
     }
@@ -1371,6 +1414,9 @@ export class DashboardHtmlGenerator {
         kpis.newRegressionCount + kpis.flakyTestCount;
       document.getElementById('count-performance').textContent =
         currentReport.triage.slowestTests.length;
+      const qCount = (currentReport.quarantine ? currentReport.quarantine.totalQuarantined : 0);
+      const qEl = document.getElementById('count-quarantine');
+      if (qEl) qEl.textContent = qCount;
 
       renderActiveTab();
     }
@@ -1686,8 +1732,9 @@ export class DashboardHtmlGenerator {
 
     function switchTab(tab) {
       activeTab = tab;
-      ['runs', 'triage', 'performance'].forEach(t => {
-        document.getElementById('tabBtn-' + t).classList.toggle('active', t === tab);
+      ['runs', 'triage', 'performance', 'quarantine'].forEach(t => {
+        const btn = document.getElementById('tabBtn-' + t);
+        if (btn) btn.classList.toggle('active', t === tab);
       });
       renderActiveTab();
     }
@@ -1716,6 +1763,8 @@ export class DashboardHtmlGenerator {
         renderRunsTab(panel, query);
       } else if (activeTab === 'triage') {
         renderTriageTab(panel, query);
+      } else if (activeTab === 'quarantine') {
+        renderQuarantineTab(panel, query);
       } else {
         renderPerformanceTab(panel, query);
       }
@@ -2108,6 +2157,351 @@ export class DashboardHtmlGenerator {
           </table>
         </div>
       \`;
+    }
+
+    function renderQuarantineTab(panel, query) {
+      const q = currentReport.quarantine || {
+        totalQuarantined: 0,
+        graduationCandidatesCount: 0,
+        overallMttrHours: 0,
+        overallMttrRuns: 0,
+        overallMtbfHours: 0,
+        overallMtbfRuns: 0,
+        activeQuarantined: [],
+        graduationCandidates: [],
+        reliabilityLeaderboard: []
+      };
+
+      const filteredQuarantined = (q.activeQuarantined || []).filter(item => {
+        if (!query) return true;
+        if (item.testCaseId && String(item.testCaseId).includes(query)) return true;
+        if ((item.testCaseTitle || '').toLowerCase().includes(query)) return true;
+        if ((item.reason || '').toLowerCase().includes(query)) return true;
+        return false;
+      });
+
+      const filteredLeaderboard = (q.reliabilityLeaderboard || []).filter(item => {
+        if (!query) return true;
+        if (item.testCaseId && String(item.testCaseId).includes(query)) return true;
+        if ((item.testCaseTitle || '').toLowerCase().includes(query)) return true;
+        return false;
+      });
+
+      const activeRows = filteredQuarantined.map(item => {
+        const isGradReady = item.consecutivePasses >= item.healingThreshold;
+        const streakPct = Math.min(100, Math.round((item.consecutivePasses / Math.max(1, item.healingThreshold)) * 100));
+        const tcId = item.testCaseId ? escapeHtml(item.testCaseId) : '';
+        const tcTitle = escapeHtml(item.testCaseTitle);
+        const idDisplay = tcId
+          ? '<span class="mono" style="font-weight: 600; color: #c084fc;">TC' + tcId + '</span>'
+          : '<span class="mono">' + escapeHtml(item.testKey) + '</span>';
+
+        return \`
+          <tr>
+            <td>
+              \${isGradReady 
+                ? '<span class="badge badge-pass">🟢 Ready to Graduate</span>' 
+                : '<span class="badge badge-quarantine">🟡 In Quarantine</span>'}
+            </td>
+            <td>
+              <div style="font-weight: 600;">\${idDisplay} \${tcTitle}</div>
+              <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+                Quarantined by <strong>\${escapeHtml(item.quarantinedBy || 'unknown')}</strong> on \${item.quarantinedAt.slice(0, 10)}
+                \${item.notes ? ' · <span style="font-style: italic;">' + escapeHtml(item.notes) + '</span>' : ''}
+              </div>
+            </td>
+            <td>
+              <div style="font-size: 12px; color: var(--text-secondary); max-width: 260px;">\${escapeHtml(item.reason)}</div>
+            </td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="flex: 1; height: 8px; background: rgba(148, 163, 184, 0.15); border-radius: 4px; overflow: hidden; min-width: 70px;">
+                  <div style="width: \${streakPct}%; height: 100%; background: \${isGradReady ? '#34d399' : '#a855f7'}; border-radius: 4px;"></div>
+                </div>
+                <span class="mono" style="font-size: 11px; font-weight: 600;">\${item.consecutivePasses}/\${item.healingThreshold}</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
+                \${isGradReady ? 'Streak target achieved!' : (item.healingThreshold - item.consecutivePasses) + ' clean passes to graduate'}
+              </div>
+            </td>
+            <td>
+              <span style="font-size: 11px; color: var(--text-secondary);">
+                \${item.lastObservedAt ? item.lastObservedAt.slice(0, 10) + ' (' + escapeHtml(item.lastOutcome || 'N/A') + ')' : 'Awaiting Run'}
+              </span>
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+              \${isGradReady ? \`
+                <button class="btn btn-sm btn-pass" onclick="actionGraduate('\${tcId || item.testKey}', '\${escapeHtml(tcTitle)}')">
+                  🎓 Graduate
+                </button>
+              \` : ''}
+              <button class="btn btn-sm btn-ghost" onclick="actionUnquarantine('\${tcId || item.testKey}', '\${escapeHtml(tcTitle)}')">
+                ❌ Release
+              </button>
+            </td>
+          </tr>
+        \`;
+      }).join('');
+
+      const leaderboardRows = filteredLeaderboard.slice(0, 25).map(item => {
+        const tcId = item.testCaseId ? escapeHtml(item.testCaseId) : '';
+        const tcTitle = escapeHtml(item.testCaseTitle);
+        const idDisplay = tcId
+          ? '<span class="mono" style="color: #38bdf8;">TC' + tcId + '</span>'
+          : '<span class="mono">' + escapeHtml(item.testKey) + '</span>';
+        const scoreColor = item.stabilityScorePct >= 90 ? '#34d399' : item.stabilityScorePct >= 70 ? '#fde047' : '#fb7185';
+
+        return \`
+          <tr>
+            <td class="mono">
+              <span class="badge" style="background: rgba(255,255,255,0.06); color: \${scoreColor}; font-weight: 700; border-color: \${scoreColor}40;">
+                \${item.stabilityScorePct}%
+              </span>
+            </td>
+            <td>
+              <div style="font-weight: 600;">\${idDisplay} \${tcTitle}</div>
+            </td>
+            <td class="mono">\${item.totalExecutions}</td>
+            <td class="mono" style="color: #fb7185;">\${item.failCount}</td>
+            <td class="mono" style="color: #34d399;">\${item.passCount}</td>
+            <td class="mono">
+              \${item.mttrHours > 0 ? '<strong>' + item.mttrHours + 'h</strong> <span style="font-size: 11px; color: var(--text-secondary);">(' + item.mttrRuns + ' runs)</span>' : '<span style="color: var(--text-secondary);">N/A</span>'}
+            </td>
+            <td class="mono">
+              \${item.mtbfHours > 0 ? '<strong>' + item.mtbfHours + 'h</strong> <span style="font-size: 11px; color: var(--text-secondary);">(' + item.mtbfRuns + ' runs)</span>' : '<span style="color: var(--text-secondary);">N/A</span>'}
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+              \${item.isQuarantined ? \`
+                <span class="badge badge-quarantine">🛡️ Quarantined</span>
+              \` : \`
+                <button class="btn btn-sm btn-ghost" onclick="actionQuarantine('\${tcId || item.testKey}', '\${escapeHtml(tcTitle)}')">
+                  🛡️ Quarantine
+                </button>
+              \`}
+            </td>
+          </tr>
+        \`;
+      }).join('');
+
+      panel.innerHTML = \`
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px;">
+          <div class="kpi-card" style="--kpi-accent: #a855f7;">
+            <div class="kpi-header">
+              <span>Active Quarantined Tests</span>
+              <span class="badge badge-quarantine">Soft-Pass Mode</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" style="color: #c084fc;">\${q.totalQuarantined}</span>
+              <span class="kpi-sub">suppressing CI failures</span>
+            </div>
+            <div class="kpi-legend">
+              <span>🎓 <strong>\${q.graduationCandidatesCount}</strong> ready for graduation review</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--kpi-accent: #10b981;">
+            <div class="kpi-header">
+              <span>Graduation Candidates</span>
+              <span class="badge badge-pass">Healed</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" style="color: #34d399;">\${q.graduationCandidatesCount}</span>
+              <span class="kpi-sub">tests meeting healing streak</span>
+            </div>
+            <div class="kpi-legend">
+              <span>Ready to safely unquarantine without blocking CI</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--kpi-accent: #38bdf8;">
+            <div class="kpi-header">
+              <span>Mean Time to Recovery (MTTR)</span>
+              <span class="badge badge-pipeline">Resolution</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value">\${q.overallMttrHours}h</span>
+              <span class="kpi-sub">average turnaround</span>
+            </div>
+            <div class="kpi-legend">
+              <span>Takes avg <strong>\${q.overallMttrRuns}</strong> pipeline builds to turn green</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--kpi-accent: #f59e0b;">
+            <div class="kpi-header">
+              <span>Mean Time Between Failures (MTBF)</span>
+              <span class="badge badge-flaky">Reliability</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value">\${q.overallMtbfHours}h</span>
+              <span class="kpi-sub">operational uptime</span>
+            </div>
+            <div class="kpi-legend">
+              <span>Avg <strong>\${q.overallMtbfRuns}</strong> clean runs between failure episodes</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 28px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div>
+              <div class="sub-section-title" style="margin-top: 0;">🛡️ Active Quarantined Tests (\${filteredQuarantined.length})</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">
+                Tests tracked in <code>quarantine.json</code>. Failures are soft-passed in CI while collecting recovery telemetry.
+              </div>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="actionPromptQuarantine()">
+              + Quarantine a Test
+            </button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Test Case</th>
+                  <th>Quarantine Reason</th>
+                  <th>Healing Streak Progress</th>
+                  <th>Last Outcome</th>
+                  <th style="text-align: right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                \${activeRows || '<tr><td colspan="6" class="empty-state">No active quarantined tests found. Use the "+ Quarantine a Test" button or CLI to add oscillating tests.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div style="margin-bottom: 12px;">
+            <div class="sub-section-title">📈 Test Case Reliability &amp; MTTR / MTBF Matrix</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">
+              Calculated from historical test executions. Sorted by stability risk to highlight quarantine candidates.
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Stability</th>
+                  <th>Test Case</th>
+                  <th>Total Runs</th>
+                  <th>Fails</th>
+                  <th>Passes</th>
+                  <th>MTTR (Hours / Runs)</th>
+                  <th>MTBF (Hours / Runs)</th>
+                  <th style="text-align: right;">Quarantine Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                \${leaderboardRows || '<tr><td colspan="8" class="empty-state">No execution reliability data available.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      \`;
+    }
+
+    async function actionPromptQuarantine() {
+      const id = prompt('Enter Test Case ID or Key (e.g. 1015 or TC1015):');
+      if (!id) return;
+      const title = prompt('Enter Test Title / Scenario Name:', 'Automated Test ' + id);
+      if (!title) return;
+      await actionQuarantine(id, title);
+    }
+
+    async function actionQuarantine(id, title) {
+      const reason = prompt('Enter reason for quarantining "' + title + '":', 'Intermittent failure / flaky in CI environment');
+      if (!reason) return;
+      const thresholdStr = prompt('Enter healing threshold (consecutive clean passes before graduation recommendation):', '5');
+      const threshold = thresholdStr ? parseInt(thresholdStr, 10) : 5;
+
+      if (PAYLOAD.isLiveServer) {
+        try {
+          const res = await fetch('/api/quarantine/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, title, reason, threshold, by: 'Dashboard QA Lead' }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast('🛡️ Test quarantined successfully!');
+            await refreshReportData();
+            return;
+          } else {
+            showToast('⚠️ Error: ' + (data.error || 'Failed to quarantine'));
+          }
+        } catch (e) {
+          showToast('⚠️ Network error: ' + e.message);
+        }
+      } else {
+        showToast('ℹ️ Offline snapshot. Run CLI: npm run quarantine -- add --id ' + id + ' --title "' + title + '" --reason "' + reason + '"');
+      }
+    }
+
+    async function actionUnquarantine(id, title) {
+      const reason = prompt('Enter reason for removing quarantine on "' + title + '":', 'Fixed by recent commit / verified stable');
+      if (reason === null) return;
+
+      if (PAYLOAD.isLiveServer) {
+        try {
+          const res = await fetch('/api/quarantine/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, reason }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast('✅ Test unquarantined!');
+            await refreshReportData();
+            return;
+          }
+        } catch (e) {
+          showToast('⚠️ Network error: ' + e.message);
+        }
+      } else {
+        showToast('ℹ️ Offline snapshot. Run CLI: npm run quarantine -- remove --id ' + id);
+      }
+    }
+
+    async function actionGraduate(id, title) {
+      const notes = prompt('Approve graduation for "' + title + '"? Optional notes:', 'Verified clean across consecutive builds');
+      if (notes === null) return;
+
+      if (PAYLOAD.isLiveServer) {
+        try {
+          const res = await fetch('/api/quarantine/graduate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, notes }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast('🎓 Test successfully graduated from quarantine!');
+            await refreshReportData();
+            return;
+          }
+        } catch (e) {
+          showToast('⚠️ Network error: ' + e.message);
+        }
+      } else {
+        showToast('ℹ️ Offline snapshot. Run CLI: npm run quarantine -- graduate --id ' + id);
+      }
+    }
+
+    async function refreshReportData() {
+      if (!PAYLOAD.isLiveServer) return;
+      try {
+        const qs = new URLSearchParams(currentReport.filter).toString();
+        const res = await fetch('/api/report?' + qs);
+        if (res.ok) {
+          currentReport = await res.json();
+          renderAll();
+        }
+      } catch (e) {}
     }
 
     async function syncFromAdo() {

@@ -8,17 +8,23 @@ import {
 import { ILogger } from "./interfaces/ILogger";
 import { DashboardHtmlGenerator } from "./DashboardHtmlGenerator";
 import { SecretRedactor } from "./utils/SecretRedactor";
+import { IQuarantineService } from "./interfaces/IQuarantineService";
+import { QuarantineService } from "./QuarantineService";
 
 export class DashboardServer {
   private server?: http.Server;
+  private quarantineService: IQuarantineService;
 
   constructor(
     private dashboardService: IDashboardService,
     private cacheRepo: IDashboardCacheRepository,
     private logger: ILogger,
     private port: number = 4200,
-    private host: string = "127.0.0.1"
-  ) {}
+    private host: string = "127.0.0.1",
+    quarantineService?: IQuarantineService
+  ) {
+    this.quarantineService = quarantineService || new QuarantineService(this.logger);
+  }
 
   private extractFilterFromSearchParams(
     params: URLSearchParams
@@ -149,6 +155,80 @@ export class DashboardServer {
               "Content-Disposition": `attachment; filename="${filename}"`,
             });
             res.end(html);
+            return;
+          }
+
+          if (req.method === "GET" && pathname === "/api/quarantine") {
+            const active = this.quarantineService.listActiveQuarantined();
+            const candidates = this.quarantineService.getGraduationCandidates();
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store",
+            });
+            res.end(JSON.stringify({ active, candidates }));
+            return;
+          }
+
+          if (req.method === "POST" && pathname === "/api/quarantine/add") {
+            const body = await this.readRequestBody(req);
+            const parsed = body ? JSON.parse(body) : {};
+            if (!parsed.title || !parsed.reason) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({ error: "Missing required fields: title, reason" })
+              );
+              return;
+            }
+            const record = this.quarantineService.quarantineTest({
+              testCaseId: parsed.id,
+              testCaseTitle: parsed.title,
+              reason: parsed.reason,
+              healingThreshold: parsed.threshold ? Number(parsed.threshold) : undefined,
+              quarantinedBy: parsed.by || "dashboard-lead",
+              notes: parsed.notes,
+            });
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(JSON.stringify({ success: true, record }));
+            return;
+          }
+
+          if (req.method === "POST" && pathname === "/api/quarantine/remove") {
+            const body = await this.readRequestBody(req);
+            const parsed = body ? JSON.parse(body) : {};
+            if (!parsed.id) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Missing required field: id" }));
+              return;
+            }
+            const ok = this.quarantineService.unquarantineTest(
+              parsed.id,
+              parsed.reason
+            );
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(JSON.stringify({ success: ok }));
+            return;
+          }
+
+          if (req.method === "POST" && pathname === "/api/quarantine/graduate") {
+            const body = await this.readRequestBody(req);
+            const parsed = body ? JSON.parse(body) : {};
+            if (!parsed.id) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Missing required field: id" }));
+              return;
+            }
+            const ok = this.quarantineService.graduateTest(
+              parsed.id,
+              parsed.notes
+            );
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(JSON.stringify({ success: ok }));
             return;
           }
 

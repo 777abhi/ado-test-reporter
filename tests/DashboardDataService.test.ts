@@ -288,8 +288,86 @@ async function runTests() {
     html.includes("ADO Test Runs Insights Dashboard"),
     "Generated HTML should contain dashboard title"
   );
+  assert(
+    html.includes("tabBtn-quarantine"),
+    "Generated HTML should contain Stability & Quarantine tab button"
+  );
   console.log("   PASS: CSV injection sanitized and HTML generated safely.");
 
+  console.log("5. Testing MTTR, MTBF, and Quarantine Metrics Engine...");
+  assert(Boolean(report.quarantine), "Report should have quarantine section");
+  assert(
+    report.quarantine!.overallMttrHours > 0,
+    `Expected overallMttrHours > 0, got ${report.quarantine?.overallMttrHours}`
+  );
+  assert(
+    report.quarantine!.overallMttrRuns >= 1,
+    `Expected overallMttrRuns >= 1, got ${report.quarantine?.overallMttrRuns}`
+  );
+
+  // Check TC501 reliability metric
+  const tc501Reliability = report.quarantine!.reliabilityLeaderboard.find(
+    (r) => r.testCaseId === "501"
+  );
+  assert(
+    Boolean(tc501Reliability && tc501Reliability.recoveryCount === 1),
+    `Expected TC501 to have 1 recovery, got ${JSON.stringify(tc501Reliability)}`
+  );
+  assert(
+    Boolean(tc501Reliability && tc501Reliability.mttrRuns === 1),
+    `Expected TC501 mttrRuns to be 1, got ${tc501Reliability?.mttrRuns}`
+  );
+
+  // Test with active quarantine test in service
+  const testQuarantinePath = path.resolve(process.cwd(), ".cache", "test-report-quarantine.json");
+  if (fs.existsSync(testQuarantinePath)) fs.unlinkSync(testQuarantinePath);
+  const qService = new (require("../src/QuarantineService").QuarantineService)(logger, testQuarantinePath);
+  qService.quarantineTest({
+    testCaseId: "501",
+    testCaseTitle: "Login_TC501",
+    reason: "Oscillating in pipeline",
+    healingThreshold: 2,
+  });
+
+  const serviceWithQ = new DashboardDataService(
+    cacheRepo,
+    logger,
+    "https://dev.azure.com/org",
+    "proj",
+    undefined,
+    undefined,
+    "Task",
+    qService
+  );
+  const reportWithQ = serviceWithQ.buildReport({
+    startDate: "2026-11-01",
+    endDate: "2026-11-08",
+  });
+
+  assert(
+    reportWithQ.kpis.quarantinedTestCount === 1,
+    `Expected quarantinedTestCount 1, got ${reportWithQ.kpis.quarantinedTestCount}`
+  );
+  assert(
+    reportWithQ.quarantine!.activeQuarantined.length === 1,
+    "Expected 1 active quarantined test"
+  );
+
+  // Check Markdown export contains quarantine section
+  const mdReport = serviceWithQ.exportToMarkdown(reportWithQ);
+  assert(
+    mdReport.includes("## 3. Stability, Reliability & Quarantine"),
+    "Markdown export must include Stability, Reliability & Quarantine section"
+  );
+  assert(
+    mdReport.includes("Login_TC501"),
+    "Markdown export must list quarantined Login_TC501"
+  );
+  console.log("   PASS: MTTR, MTBF, stability scores, and quarantine reports verified.");
+
+  if (fs.existsSync(testQuarantinePath)) {
+    fs.unlinkSync(testQuarantinePath);
+  }
   if (fs.existsSync(tempCachePath)) {
     fs.unlinkSync(tempCachePath);
   }

@@ -4,6 +4,7 @@ import { IFailureTaskService } from "./interfaces/IFailureTaskService";
 import { ILogger } from "./interfaces/ILogger";
 import { ITestResultParser } from "./interfaces/ITestResultParser";
 import { RunOptions } from "./interfaces/RunOptions";
+import { IQuarantineService } from "./interfaces/IQuarantineService";
 import * as fs from "fs";
 import * as path from "path";
 import { isSafePath } from "./utils/PathUtils";
@@ -17,7 +18,8 @@ export class App {
         private testPlanService: ITestPlanService,
         private failureTaskService: IFailureTaskService,
         private parser: ITestResultParser,
-        private logger: ILogger
+        private logger: ILogger,
+        private quarantineService?: IQuarantineService
     ) { }
 
     async run(options: RunOptions, junitFile: string) {
@@ -109,13 +111,21 @@ export class App {
                 match ? match[1] : null
             );
 
+            const isQuarantined = this.quarantineService?.isQuarantined(resolvedTestCase.id, tc.name) ?? false;
+            if (this.quarantineService) {
+                this.quarantineService.recordExecutionOutcome(resolvedTestCase.id, tc.name, tc.outcome);
+            }
+
             const resultModel: TestCaseResultWithAttachments = {
                 testCaseTitle: tc.name,
                 automatedTestName: tc.name,
                 durationInMs: tc.durationMs,
                 outcome: tc.outcome,
                 state: "Completed",
-                errorMessage: tc.errorMessage,
+                errorMessage: isQuarantined && tc.outcome === "Failed"
+                    ? `[Quarantined - Soft Pass] ${tc.errorMessage || ""}`
+                    : tc.errorMessage,
+                comment: isQuarantined ? "[Quarantined - Non-Blocking]" : undefined,
                 testCase: { id: String(resolvedTestCase.id) },
                 testCaseRevision: resolvedTestCase.revision,
                 localAttachments: tc.attachments,
@@ -125,18 +135,24 @@ export class App {
             resultsToPublish.push(resultModel);
 
             if (tc.outcome === "Failed") {
-                let isFlaky = false;
-                if (options.detectFlakyTests) {
-                    isFlaky = await this.testPlanService.isTestFlaky(resolvedTestCase.id, tc.name);
-                }
+                if (isQuarantined) {
+                    this.logger.log(
+                        `🛡️ Test '${tc.name}' [TC ${resolvedTestCase.id}] failed but is actively QUARANTINED. Suppressing failure task and soft-passing.`
+                    );
+                } else {
+                    let isFlaky = false;
+                    if (options.detectFlakyTests) {
+                        isFlaky = await this.testPlanService.isTestFlaky(resolvedTestCase.id, tc.name);
+                    }
 
-                failedForTask.push({
-                    testCaseId: String(resolvedTestCase.id),
-                    testName: tc.name,
-                    errorMessage: tc.errorMessage,
-                    attachments: tc.attachments,
-                    isFlaky: isFlaky,
-                });
+                    failedForTask.push({
+                        testCaseId: String(resolvedTestCase.id),
+                        testName: tc.name,
+                        errorMessage: tc.errorMessage,
+                        attachments: tc.attachments,
+                        isFlaky: isFlaky,
+                    });
+                }
             } else if (tc.outcome === "Passed") {
                 passedTestCaseIds.push(String(resolvedTestCase.id));
             }
