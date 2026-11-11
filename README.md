@@ -1,6 +1,291 @@
 # ADO Test Reporter
 
-A lightweight, robust service that bridges the gap between automated test execution and Azure DevOps Test Plans. It turns ephemeral JUnit results into persistent, traceable data—linking Test Cases, Plans, Suites, and Defects automatically.
+A lightweight, enterprise-ready service that bridges automated test execution and Azure DevOps (ADO) Test Plans. It turns ephemeral JUnit XML results into persistent, traceable data—linking Test Cases, Plans, Suites, Defects, and Requirements automatically.
+
+---
+
+## 🤖 AI Agent & Developer Setup Playbook
+
+> [!NOTE]
+> **Instructions for AI Agents (Cursor, Claude, Copilot, Antigravity, etc.):**
+> When a user asks you to help them set up or use this repository, follow this structured, interactive playbook. Ask the user clarifying questions step-by-step, verify prerequisites before running commands, and adhere strictly to the credential security protocol below.
+
+---
+
+### 🛡️ Credential Security & Safety Protocol (Read First)
+1. **Never ask the user to paste secrets into chat:** Do not prompt the user to output raw tokens, passwords, or personal access tokens (PAT) in conversation messages or logs.
+2. **Local runs (`.env`):** Direct the user to create a local `.env` file from `.env.example`. The `.env` file is included in `.gitignore` and must never be committed.
+3. **Pipeline runs (`$(System.AccessToken)`):** For Azure Pipelines, configure the pipeline to use the system token or Azure Service Principal. Ensure the build service account has permission to contribute to Test Runs and Work Items.
+4. **Minimal Required Scopes for ADO PAT:**
+   | Scope | Permission Level | Reason |
+   |---|---|---|
+   | **Test Management** | `Read & Write` | Create/update Test Runs, Test Points, and publish results |
+   | **Work Items** | `Read & Write` | Create, search, update Test Cases and Failure Tasks/Bugs |
+   | **Project & Team** | `Read` | Resolve project metadata and team configuration |
+   | **Build** *(optional)* | `Read` | Retrieve build metadata if linking runs to pipeline builds |
+
+---
+
+### 📋 Phase 1: Environment & Dependency Verification
+
+Before configuring ADO or running jobs, verify the local development environment:
+
+1. **Check Node.js (requires Node 18+ or 20+):**
+   ```bash
+   node -v
+   ```
+2. **Install project dependencies:**
+   ```bash
+   npm install
+   ```
+3. **Verify TypeScript compilation:**
+   ```bash
+   npm run typecheck
+   ```
+4. **Run existing unit test suite to verify baseline integrity:**
+   ```bash
+   npm test
+   ```
+
+---
+
+### ⚙️ Phase 2: Configuration & Credentials Setup
+
+#### Step 1: Initialize `.env`
+Instruct the user (or create) the `.env` file from `.env.example`:
+```bash
+cp .env.example .env
+```
+
+#### Step 2: Configure Environment Variables
+Prompt the user for their Azure DevOps organization details and update `.env`:
+
+```ini
+# Required: Azure DevOps Organization & Project
+ADO_ORG_URL=https://dev.azure.com/YOUR_ORGANIZATION
+ADO_PROJECT=YOUR_PROJECT_NAME
+ADO_TOKEN=YOUR_PERSONAL_ACCESS_TOKEN
+
+# Recommended Defaults (Safe Onboarding)
+ADO_DEFECT_TYPE=Task                # Work item type for failures ("Task" or "Bug")
+CREATE_FAILURE_TASKS=true           # Automatically create defect tickets on test failures
+ADO_AUTO_CLOSE_ON_PASS=true         # Automatically close open defect tasks when test passes
+ADO_AUTO_CREATE_TEST_CASES=true     # Auto-create Test Cases if ID not found in ADO
+ADO_AUTO_CREATE_PLAN=true           # Auto-create Test Plan if target plan doesn't exist
+ADO_AUTO_CREATE_SUITE=true          # Auto-create Test Suite if target suite doesn't exist
+ADO_FALLBACK_TO_NAME_SEARCH=true    # Search by test title if no ID pattern (e.g. _TC123) is found
+ADO_DETECT_FLAKY_TESTS=false        # Set to true to inspect historical failure rates (last 7 days)
+```
+
+---
+
+### 🚀 Phase 3: Interactive Workflows & Agent Runbooks
+
+Walk the user through the relevant workflow based on their goal:
+
+```mermaid
+flowchart TD
+    Start["User Goal"] --> W1["1. Publish Test Results (JUnit)"]
+    Start --> W2["2. Sync Feature Files (Gherkin/BDD)"]
+    Start --> W3["3. Test Runs Insights Dashboard"]
+    Start --> W4["4. Flaky Test Quarantine CLI"]
+    Start --> W5["5. Import Test Cases from Excel"]
+    Start --> W6["6. Azure Pipelines CI/CD Setup"]
+```
+
+---
+
+#### 📦 Workflow 1: Publish JUnit Results to Azure Test Plans
+
+Use this workflow to parse JUnit XML, map tests to Test Cases, publish a Test Run, and auto-generate defect tasks for failures.
+
+**Agent Interactive Questions to Ask User:**
+> 1. *"Do you have a JUnit XML file ready (e.g., from Jest, PyTest, Playwright, Cypress), or should we test with the sample file `src/results.xml`?"*
+> 2. *"What are your desired Test Plan and Test Suite names in Azure DevOps (or should we use default smoke test names)?"*
+> 3. *"Would you like failures logged as `Task` or `Bug` in your backlog?"*
+
+**Execution Commands:**
+```bash
+# 1. Smoke test verification using the bundled sample results
+npm start -- \
+  --junit-file src/results.xml \
+  --plan-name "Smoke Test Plan" \
+  --suite-name "Automated Regression" \
+  --attach-results
+
+# 2. Dynamic release plan (creates a new plan automatically for the run)
+npm start -- \
+  --junit-file path/to/your/junit.xml \
+  --plan-name auto-generate \
+  --suite-name "Sprint Execution" \
+  --attach-results
+
+# 3. Publish results and generate an instant HTML dashboard snapshot
+npm start -- \
+  --junit-file path/to/your/junit.xml \
+  --plan-name "Sprint 42" \
+  --suite-name "E2E Tests" \
+  --generate-dashboard \
+  --dashboard-days 30 \
+  --dashboard-output reports/run-dashboard.html
+```
+
+---
+
+#### 🥒 Workflow 2: Sync Gherkin Feature Files to ADO Test Cases
+
+Use this workflow to convert `.feature` files in Git into living documentation in Azure Test Plans.
+
+**Agent Interactive Questions to Ask User:**
+> 1. *"Where are your feature files located (default is `features/**/*.feature`)?"*
+> 2. *"Are your scenarios tagged with `@TC_<id>` (e.g., `@TC_1015`) to update existing Test Cases, or should the tool auto-provision new ones?"*
+
+**Step Mapping Logic:**
+- `Given` / `When` $\rightarrow$ **Action** step in ADO Test Case
+- `Then` $\rightarrow$ **Expected Result** step in ADO Test Case
+- Requirement tags (e.g., `@Story123` or `@AB#456`) $\rightarrow$ Auto-linked to Requirement work item
+
+**Execution Command:**
+```bash
+npm run sync-features
+```
+
+---
+
+#### 📊 Workflow 3: ADO Test Runs Insights Dashboard
+
+Use this workflow to analyze automation execution share, flaky test oscillation, failure signatures (`ErrorHash`), and execution duration.
+
+**Agent Interactive Questions to Ask User:**
+> 1. *"Do you want to run the live local server to explore the dashboard in your browser, or export a self-contained static report (HTML/CSV/Markdown)?"*
+> 2. *"What date range or lookback window (e.g., last 30 days) would you like to analyze?"*
+
+**Execution Commands:**
+```bash
+# Option A: Start the interactive live server (persists cache to .cache/ado-dashboard-cache.json)
+npm run dashboard -- --days 30 --port 4200
+
+# Option B: Export a self-contained standalone HTML report for stakeholders
+npm run dashboard:export -- \
+  --start-date 2026-10-01 \
+  --end-date 2026-11-01 \
+  --format html \
+  --output reports/ado-test-runs-dashboard.html
+
+# Option C: Export a CSV summary for spreadsheet / PowerBI analysis
+npm run dashboard:export -- \
+  --start-date 2026-10-01 \
+  --end-date 2026-11-01 \
+  --format csv \
+  --output reports/ado-test-runs.csv
+```
+
+---
+
+#### 🛡️ Workflow 4: Flaky Test Quarantine CLI
+
+Use this workflow to quarantine known flaky tests in `quarantine.json` so they do not block CI pipelines while under repair, and track their consecutive passes toward graduation.
+
+**Agent Interactive Questions to Ask User:**
+> 1. *"Do you want to inspect existing quarantined tests, quarantine a new failing test, or graduate/remove a stabilized test?"*
+
+**Execution Commands:**
+```bash
+# List all actively quarantined tests
+npm run quarantine -- list
+
+# Quarantine a flaky test (soft-pass mode in runs)
+npm run quarantine -- add \
+  --id 1015 \
+  --title "Verify Checkout Payment Decline" \
+  --reason "Intermittent 503 gateway response in staging" \
+  --threshold 5 \
+  --by "qa-lead"
+
+# Inspect history and graduation progress
+npm run quarantine -- history
+
+# Remove / unquarantine a test case
+npm run quarantine -- remove --id 1015 --reason "Fixed in PR #42"
+```
+
+---
+
+#### 📑 Workflow 5: Import Test Cases from Excel
+
+Use this workflow to bulk-import manual or legacy test cases from `.xlsx` spreadsheets into ADO Test Plans.
+
+**Agent Interactive Questions to Ask User:**
+> 1. *"Where is your Excel spreadsheet located?"*
+> 2. *"Do you have a JSON column mapping file defining how Excel columns map to ADO fields (Title, Steps, Expected Result, Priority)?"*
+
+**Execution Command:**
+```bash
+npm run import-excel -- \
+  --file path/to/test-cases.xlsx \
+  --mapping path/to/mapping.json \
+  --plan-name "Release 2.0 Test Plan" \
+  --suite-name "Manual Functional Tests"
+```
+
+---
+
+#### ⚡ Workflow 6: Azure DevOps CI/CD Pipeline Integration
+
+Use this workflow to embed automated reporting directly into an Azure DevOps Pipeline (`azure-pipelines.yml`).
+
+**Agent Integration Checklist:**
+1. In the target Azure DevOps project, navigate to **Project Settings** $\rightarrow$ **Repositories** / **Pipelines** $\rightarrow$ **Permissions**.
+2. Ensure `Project Collection Build Service (<your-org>)` or `<Project> Build Service` has:
+   - **Contribute to test runs** = `Allow`
+   - **Create test runs** = `Allow`
+   - **Edit work items in this node** = `Allow`
+3. Add the step to `azure-pipelines.yml`:
+
+```yaml
+- task: NodeTool@0
+  inputs:
+    versionSpec: '20.x'
+  displayName: 'Install Node.js'
+
+- script: |
+    npm ci || npm install
+    npm run typecheck
+    npm test
+  displayName: 'Build and Run Unit Tests'
+
+- script: |
+    npx ts-node src/index.ts \
+      --junit-file="$(Agent.TempDirectory)/results.xml" \
+      --plan-name="CI - Build $(Build.BuildId)" \
+      --suite-name="Automated Suite" \
+      --attach-results
+  displayName: 'Sync Results to Azure Test Plans'
+  env:
+    ADO_TOKEN: $(System.AccessToken)
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    ADO_ORG_URL: $(System.TeamFoundationCollectionUri)
+    ADO_PROJECT: $(System.TeamProject)
+    BUILD_BUILDID: $(Build.BuildId)
+    BUILD_BUILDNUMBER: $(Build.BuildNumber)
+    CREATE_FAILURE_TASKS: 'true'
+    ADO_DEFECT_TYPE: 'Task'
+```
+
+---
+
+### 🔍 Phase 4: Diagnostic & Troubleshooting Decision Tree
+
+When encountering issues, AI agents and developers should follow this decision matrix:
+
+| Error Symptom | Probable Cause | Corrective Action |
+|---|---|---|
+| `HTTP 401 Unauthorized` | Invalid, expired, or malformed `ADO_TOKEN` | Verify token validity in ADO. Ensure no extra spaces or newline characters in `.env`. Check that `ADO_ORG_URL` has no trailing slash issues. |
+| `HTTP 403 Forbidden` | Missing PAT scope or pipeline permission | Check PAT has `Test Management (Read & Write)` and `Work Items (Read & Write)`. In pipelines, grant `Contribute to test runs` to the Build Service account. |
+| `Work Item type Bug not found` | The ADO process template does not have "Bug" (e.g. Agile/Basic uses Task or Issue) | Set `ADO_DEFECT_TYPE=Task` in `.env` or pipeline variables. |
+| `Plan / Suite not found` | The target Test Plan or Suite doesn't exist and auto-create is disabled | Enable `ADO_AUTO_CREATE_PLAN=true` and `ADO_AUTO_CREATE_SUITE=true` in `.env`. |
+| `Cannot find JUnit XML file` | File path incorrect or tests failed before producing XML | Verify test runner configuration (e.g. `jest --ci --reporters=default --reporters=jest-junit`). Check absolute path to XML. |
+| `Scenarios found with @TC_ tags: 0` | Feature files lack tags or pattern mismatch | Tag scenarios in `.feature` files with `@TC_<id>` (e.g. `@TC_1015`). |
 
 ---
 
@@ -31,21 +316,19 @@ Keep your specifications and tests in sync.
 
 ## ⚙️ Technical Perspective: Key Features
 
-For DevOps Engineers and SDETs, this tool provides a flexible, pipeline-native solution to manage test data at scale.
-
 ### 1. 🔌 Universal Compatibility (JUnit XML)
-- **Language Agnostic**: Works with any test runner that outputs standard JUnit XML (Jest, PyTest, Mocha, NUnit, etc.).
-- **Pipeline Native**: Runs as a lightweight Node.js CLI step in Azure Pipelines.
+- **Language Agnostic**: Works with any test runner that outputs standard JUnit XML (Jest, PyTest, Mocha, NUnit, Playwright, Cypress).
+- **Pipeline Native**: Runs as a lightweight Node.js CLI step in Azure Pipelines or GitHub Actions.
 
 ### 2. 🔍 Smart Test Case Resolution
 The tool intelligently maps results to ADO Test Cases:
-- **ID Extraction**: Parsers test names for patterns like `..._TC123` to exact match IDs.
+- **ID Extraction**: Parses test names for patterns like `..._TC123` to exact match IDs.
 - **Fuzzy Fallback**: If no ID is found, searches ADO for a Test Case with a matching title.
 - **Auto-Provisioning**: Automatically creates new Test Cases if no match is found (configurable).
 
 ### 3. 🥒 Gherkin & BDD Synchronization
 - **Feature File Parsing**: Scans `.feature` files and parses Scenarios, Backgrounds, and Examples.
-- **Step Mapping**: Maps `Given`/`When` -> **Action** and `Then` -> **Expected Result**.
+- **Step Mapping**: Maps `Given`/`When` $\rightarrow$ **Action** and `Then` $\rightarrow$ **Expected Result**.
 - **Tag Linking**: Uses tags (e.g., `@TC_123`) to target specific ADO Test Cases.
 
 ### 4. 🛠️ Automated Test Management
@@ -67,149 +350,60 @@ The tool intelligently maps results to ADO Test Cases:
 - **Rich Context**: Support uploading individual test attachments (screenshots, logs) to the Test Result or Failure Task.
 - **Fast Debugging**: Drastically reduces debugging time by attaching relevant screenshots to the task.
 
-### 8. 📉 Flaky Test Detection
+### 8. 📉 Flaky Test Detection & Quarantine
 - **Smart Triage**: Analyze historical outcome data (last 7 days) before creating a failure task.
 - **Tagging**: If a test toggles frequently between passing and failing, tag it as "Flaky" and prefix the task title instead of raising it as a standard defect.
+- **Quarantine CLI**: Isolate unstable tests to soft-pass mode while tracking graduation back to main runs.
 
 ### 9. 📊 ADO Test Runs Insights Dashboard
-- **Execution Source Split**: Compares tests executed in **Azure Pipelines** (further broken down into `ADO Test Reporter` vs. `Standard CI`) against tests executed **Directly in ADO** (Manual / Exploratory runs) for any custom Start Date and End Date window.
-- **4 Modern Metric Pillars**:
-  1. *Execution Split & Velocity*: Automation share %, daily/weekly volume trends, and runner sub-source distribution.
-  2. *Quality & Stability*: Overall and per-source pass rates with period-over-period delta (`vs prev window`), plus flaky test oscillation tracking.
-  3. *Actionable Triage & Defect Intelligence*: Active regressions (failing on latest run), recurring failure signatures grouped by SHA-256 `ErrorHash`, and linked ADO Defect coverage %.
-  4. *Execution Performance*: P95/Average run and test case duration leaderboards and Plan/Suite health matrices.
-- **Hybrid Delivery & Local Cache**: Persists fetched ADO runs to `.cache/ado-dashboard-cache.json` for instant offline filtering, serves a live web UI (`npm run dashboard`), and exports 100% self-contained HTML snapshots, CSV reports, and Markdown triage summaries (`npm run dashboard:export`).
-
----
-
-## 🔮 Roadmap: Next Incremental Features
-
-To further enhance End-to-End Traceability and workflow automation, the following features are planned:
-
-### Phase 1: Deepening Technical Capabilities
-
-1.  **🌍 Multi-Configuration Matrix**:
-    - *Logic*: Enhanced mapping for executing the same test across multiple configurations (e.g., Browser=Chrome vs Edge) in a single run.
-
-### Phase 2: Enterprise Quality & Multi-Team Scaling
-To support uniform status reporting and quality engineering across the organization:
-
-2.  **🏢 Centralized Multi-Project Reporting**:
-    - *Logic*: Aggregates test run data from multiple ADO Projects into a single view.
-    - *Benefit*: Provides leadership with a unified quality dashboard across all product lines.
-
-3.  **📏 Standardized Quality Gates**:
-    - *Logic*: Configurable thresholds (e.g., "95% Pass Rate") applied uniformly across all teams' pipelines.
-    - *Benefit*: Enforces a consistent definition of "Done" for the organization.
-
-6.  **🤖 Team-Based Defect Routing**:
-    - *Logic*: Routes failure tasks to specific Area Paths/Teams based on feature file tags or folder paths.
-    - *Benefit*: Ensures defects automatically land in the correct team's backlog in shared repositories.
-
-7.  **📊 Historical Trend Export**:
-    - *Logic*: Exports long-term metrics (Pass Rate, Defect Density) for analysis in tools like PowerBI.
-    - *Benefit*: Identifies systemic quality issues and high-performing teams over time.
+- **Execution Source Split**: Compares tests executed in **Azure Pipelines** (`ADO Test Reporter` vs. `Standard CI`) against tests executed **Directly in ADO** (Manual / Exploratory runs).
+- **4 Metric Pillars**:
+  1. *Execution Split & Velocity*: Automation share %, volume trends, runner distribution.
+  2. *Quality & Stability*: Pass rates with period-over-period delta (`vs prev window`), plus flaky oscillation.
+  3. *Actionable Triage*: Active regressions, recurring failure signatures (`ErrorHash`), and linked defect coverage %.
+  4. *Performance*: P95/Average run durations and Plan/Suite health matrices.
+- **Delivery**: Live web UI (`npm run dashboard`) and standalone exports (HTML, CSV, Markdown).
 
 ---
 
 ## 🏗️ Architecture
 
-This project follows **SOLID principles** to ensure maintainability and testability:
-- **Service-Oriented**: Distinct services for Configuration (`ConfigService`), Test Plans (`TestPlanService`), Cases (`TestCaseService`), Sync (`AdoSyncService`), and Analytics (`DashboardDataService`, `DashboardCacheRepository`, `DashboardHtmlGenerator`).
-- **Dependency Injection**: All dependencies are injected via interfaces, making the system modular and easy to mock for unit testing.
-- **Orchestrator Pattern**: The main `App` class orchestrates the workflow, keeping the entry point clean.
+This project follows **SOLID principles** and clean architectural separation:
+- **Service-Oriented**: Distinct services for Configuration (`ConfigService`), Test Plans (`TestPlanService`), Cases (`TestCaseService`), Sync (`AdoSyncService`), Analytics (`DashboardDataService`, `DashboardCacheRepository`, `DashboardHtmlGenerator`), and Quarantine (`QuarantineService`).
+- **Dependency Injection**: Dependencies are injected via TypeScript interfaces, making services easily testable and mockable.
+- **Orchestrator Pattern**: The main `App` class orchestrates the end-to-end sync workflow.
 
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+
-- Azure DevOps Organization & Project
-- A Personal Access Token (PAT) with Read/Write access to Work Items and Test Management.
-
-### Installation
-```bash
-npm install
+```
+src/
+├── interfaces/             # TypeScript contracts and interfaces
+├── utils/                  # CLI utilities (quarantine, dashboard, excel, variable groups)
+├── AdoSyncService.ts       # Gherkin scenario to ADO test case synchronizer
+├── App.ts                  # Main execution orchestrator
+├── AzureClientProvider.ts  # ADO REST API client factory
+├── ConfigService.ts        # Environment & CLI argument loader
+├── Dashboard*.ts           # Analytics cache, data service, HTML generator, and server
+├── GherkinFeatureParser.ts # Gherkin AST parser
+├── QuarantineService.ts    # Flaky test quarantine management
+├── failureTaskService.ts   # Work item creation and duplicate prevention
+├── junitParser.ts          # JUnit XML parser
+├── testCaseService.ts      # ADO Test Case WIT manager
+└── testPlanService.ts      # ADO Test Plan, Suite, Point, and Run manager
 ```
 
-### Configuration
-Create a `.env` file (or set Pipeline variables):
-```ini
-ADO_ORG_URL=https://dev.azure.com/myorg
-ADO_PROJECT=MyProject
-ADO_TOKEN=your_pat_token
-# Optional Toggles
-CREATE_FAILURE_TASKS=true
-ADO_DEFECT_TYPE=Task # or Bug
-ADO_AUTO_CLOSE_ON_PASS=true
-ADO_FALLBACK_TO_NAME_SEARCH=false
-ADO_AUTO_CREATE_TEST_CASES=true
-ADO_DETECT_FLAKY_TESTS=false # Set to true to enable flaky test detection
-```
-
-### Usage
-
-#### 1. Publish Test Results
-```bash
-npm start -- \
-  --junit-file src/results.xml \
-  --plan-name "Release 1.0" \
-  --suite-name "Regression" \
-  --attach-results \
-  --generate-dashboard
-```
-- Use `--plan-name auto-generate` to create a new plan for every run.
-- Add `--generate-dashboard` (and optional `--dashboard-days 30 --dashboard-output reports/dashboard.html`) to export an interactive HTML dashboard after publishing.
-
-#### 2. Sync Feature Files (Gherkin)
-```bash
-npm run sync-features
-```
-- Scans `features/**/*.feature` and updates ADO Test Cases tagged with `@TC_ID`.
-
-#### 3. Launch or Export the ADO Test Runs Insights Dashboard
-```bash
-# Start the live interactive dashboard server (with local cache + ADO sync)
-npm run dashboard -- --days 30 --port 4200
-
-# Export a self-contained static HTML, CSV, or Markdown report for a custom date window
-npm run dashboard:export -- \
-  --start-date 2026-10-15 \
-  --end-date 2026-11-09 \
-  --format html \
-  --output reports/ado-test-runs-dashboard.html
-```
-
----
-
-## 🔧 Pipeline Integration
-
-Add this as a task in `azure-pipelines.yml`:
-
-```yaml
-- script: |
-    npm install
-    npm start -- --junit-file $(Agent.TempDirectory)/results.xml --plan-name "CI Run" --suite-name "Build $(Build.BuildId)"
-  env:
-    ADO_TOKEN: $(System.AccessToken)
-    ADO_ORG_URL: $(System.TeamFoundationCollectionUri)
-    ADO_PROJECT: $(System.TeamProject)
-  displayName: 'Publish Results to ADO'
 ---
 
 ## 🧪 Testing & Quality Assurance
 
-The codebase includes comprehensive unit and integration test suites covering all core workflows, edge cases, and security controls:
+Comprehensive unit and integration test suites cover all core workflows:
 
 ```bash
 # Run all unit and integration test suites via Jest
 npm test
 
-# Generate code coverage reports (text, lcov, cobertura)
+# Generate code coverage reports (HTML, lcov, cobertura)
 npm run test:coverage
 
-# Run tests in CI mode (outputs test-results/junit.xml for pipeline publishing)
+# Run tests in CI mode (outputs test-results/junit.xml)
 npm run test:ci
 
 # Run TypeScript type check
@@ -221,5 +415,6 @@ npm run typecheck
 ## 📚 Additional Resources
 
 - [Core Logic Sequence Diagram](docs/sequence-diagram.md)
-- [Technical Documentation](docs)
-- [Screenshots & Demo](https://docs.google.com/presentation/d/1Cdk-6VaNdSHx073H-eCI7MMRfK0EcmA0/edit?usp=sharing&ouid=113003728679286380567&rtpof=true&sd=true)
+- [Technical Documentation](docs/techincal-docs.md)
+- [User Guide for Exploratory Testers](docs/UserGuide-ExploratoryTesters.md)
+- [Test Report Documentation](docs/TestReport.md)
