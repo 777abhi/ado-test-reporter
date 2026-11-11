@@ -10,7 +10,7 @@ describe("SecretRedactor Dynamic Registration", () => {
     });
 
     it("should dynamically register and redact a custom secret", () => {
-        const customToken = "super-secret-variable-xyz123";
+        const customToken = "mock_sample_custom_key_xyz123";
         SecretRedactor.registerSecret(customToken);
 
         const input = `Configuring client with credential ${customToken} and proceeding.`;
@@ -26,30 +26,30 @@ describe("SecretRedactor Dynamic Registration", () => {
     });
 
     it("should sort registered secrets by length so substrings don't break longer secrets", () => {
-        SecretRedactor.registerSecret("custom_key");
-        SecretRedactor.registerSecret("custom_key_extended_secret");
+        SecretRedactor.registerSecret("mock_custom_key");
+        SecretRedactor.registerSecret("mock_custom_key_extended_secret");
 
-        const input = "Credential payload: custom_key_extended_secret";
+        const input = "Credential payload: mock_custom_key_extended_secret";
         const result = SecretRedactor.redact(input);
 
         expect(result).toBe("Credential payload: ***REDACTED***");
     });
 
     it("should escape regex special characters in dynamic secrets", () => {
-        const specialSecret = "p@$$w0rd(special)[regex].*+";
+        const specialSecret = "mock_symb0l(special)[regex].*+";
         SecretRedactor.registerSecret(specialSecret);
 
-        const input = `User password is ${specialSecret}.`;
+        const input = `User credential is ${specialSecret}.`;
         const result = SecretRedactor.redact(input);
 
-        expect(result).toBe("User password is ***REDACTED***.");
+        expect(result).toBe("User credential is ***REDACTED***.");
     });
 
     it("should clear registered dynamic secrets when clearDynamicSecrets is called", () => {
-        SecretRedactor.registerSecret("temp_secret_123");
-        expect(SecretRedactor.redact("temp_secret_123")).toBe("***REDACTED***");
+        SecretRedactor.registerSecret("mock_transient_key_123");
+        expect(SecretRedactor.redact("mock_transient_key_123")).toBe("***REDACTED***");
 
         SecretRedactor.clearDynamicSecrets();
-        expect(SecretRedactor.redact("temp_secret_123")).toBe("temp_secret_123");
+        expect(SecretRedactor.redact("mock_transient_key_123")).toBe("mock_transient_key_123");
     });
 });

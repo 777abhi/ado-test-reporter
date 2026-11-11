@@ -26,9 +26,16 @@ describe("AzureClientProvider Dual Authentication", () => {
         };
     });
 
+    const generateMockJwt = (): string => {
+        const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+        const payload = Buffer.from(JSON.stringify({ sub: "mock-sub-12345" })).toString("base64url");
+        const signature = "mock_test_signature_xyz";
+        return `${header}.${payload}.${signature}`;
+    };
+
     it("should auto-detect JWT Bearer token and call getBearerHandler", async () => {
         const provider = new AzureClientProvider();
-        const jwtBearerToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozGz64oqT3zsNxfx7io";
+        const jwtBearerToken = generateMockJwt();
 
         await provider.createClients(jwtBearerToken, "https://dev.azure.com/myorg", "auto", mockLogger);
 
@@ -41,7 +48,7 @@ describe("AzureClientProvider Dual Authentication", () => {
 
     it("should use getPersonalAccessTokenHandler for standard non-JWT tokens", async () => {
         const provider = new AzureClientProvider();
-        const patToken = "my-ado-pat-token-1234567890abcdef";
+        const patToken = "mock_dummy_pat_12345";
 
         await provider.createClients(patToken, "https://dev.azure.com/myorg", "auto", mockLogger);
 
@@ -54,7 +61,7 @@ describe("AzureClientProvider Dual Authentication", () => {
 
     it("should honor explicit authType 'bearer' even if token format is non-standard", async () => {
         const provider = new AzureClientProvider();
-        const customToken = "custom-service-connection-token";
+        const customToken = "custom-service-connection-mock-token";
 
         await provider.createClients(customToken, "https://dev.azure.com/myorg", "bearer", mockLogger);
 
@@ -63,7 +70,7 @@ describe("AzureClientProvider Dual Authentication", () => {
 
     it("should honor explicit authType 'pat' even if token resembles a JWT", async () => {
         const provider = new AzureClientProvider();
-        const token = "eyJheader.eyPayload.signature";
+        const token = generateMockJwt();
 
         await provider.createClients(token, "https://dev.azure.com/myorg", "pat", mockLogger);
 

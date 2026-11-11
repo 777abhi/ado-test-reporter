@@ -54,7 +54,7 @@ describe("AuditLogger", () => {
     });
 
     it("should automatically redact dynamically registered secrets inside audit event details", () => {
-        const secretVal = "super_classified_token_999";
+        const secretVal = "mock_sample_auth_credential_999";
         SecretRedactor.registerSecret(secretVal);
 
         const logger = new AuditLogger(testLogFile);
