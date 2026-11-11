@@ -1,4 +1,11 @@
-export type QuarantineStatus = "active" | "graduated" | "removed";
+export type QuarantineStatus = "active" | "graduated" | "removed" | "expired";
+
+export interface QuarantineAuditEntry {
+  action: "quarantined" | "re_quarantined" | "graduated" | "unquarantined" | "expired" | "soft_passed";
+  timestamp: string;
+  actor?: string;
+  details?: string;
+}
 
 export interface QuarantinedTestRecord {
   testKey: string;
@@ -14,6 +21,11 @@ export interface QuarantinedTestRecord {
   lastOutcome?: string;
   graduatedAt?: string;
   notes?: string;
+  linkedWorkItemId?: string;
+  reasonCode?: string;
+  ttlDays?: number;
+  expiresAt?: string;
+  auditHistory?: QuarantineAuditEntry[];
 }
 
 export interface QuarantineConfigFile {
@@ -30,6 +42,9 @@ export interface QuarantineAddOptions {
   quarantinedBy?: string;
   healingThreshold?: number;
   notes?: string;
+  linkedWorkItemId?: string;
+  reasonCode?: string;
+  ttlDays?: number;
 }
 
 export interface GraduationCandidate {
@@ -43,6 +58,7 @@ export interface QuarantineOutcomeResult {
   record?: QuarantinedTestRecord;
   isQuarantined: boolean;
   isReadyForGraduation: boolean;
+  isExpired?: boolean;
 }
 
 export interface IQuarantineService {
@@ -64,4 +80,5 @@ export interface IQuarantineService {
   ): QuarantineOutcomeResult;
   getGraduationCandidates(): GraduationCandidate[];
   listActiveQuarantined(): QuarantinedTestRecord[];
+  checkExpirations(): QuarantinedTestRecord[];
 }

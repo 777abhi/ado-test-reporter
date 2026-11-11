@@ -364,6 +364,16 @@ The tool intelligently maps results to ADO Test Cases:
   4. *Performance*: P95/Average run durations and Plan/Suite health matrices.
 - **Delivery**: Live web UI (`npm run dashboard`) and standalone exports (HTML, CSV, Markdown).
 
+### 10. 🛡️ Security Governance & Cryptographic Audit Traceability
+Enterprise-grade compliance, least-privilege identity, and tamper-evident provenance:
+- **Dual-Mode Authentication (Entra ID / Workload Identity & PAT)**: Auto-detects JWT Bearer tokens from Workload Identity Federation / Service Connections using native `getBearerHandler`, falling back seamlessly to scoped Personal Access Tokens.
+- **Dynamic Secret Redaction**: Registers all runtime secrets and pipeline tokens into `SecretRedactor` dynamically, preventing credential leaks in logs, error traces, and diagnostic output.
+- **Immutable Execution Provenance**: Automatically captures and records Git Commit SHA (`BUILD_SOURCEVERSION`), Branch (`BUILD_SOURCEBRANCH`), Pipeline Run URI, Triggering Actor (`BUILD_REQUESTEDFOR`), and Host Agent, stamping them onto Test Runs, Test Results, and Defect Work Items.
+- **Cryptographic Evidence Manifest (`audit-evidence.json`)**: Computes SHA-256 cryptographic hashes for the raw JUnit XML and all attached execution artifacts (screenshots, logs), packaging and uploading a tamper-evident audit manifest attached directly to the Azure DevOps Test Run.
+- **Governed Test Quarantine with TTL & Reason Codes**: Enforces mandatory linked defect references (e.g. `AB#1050`), standardized reason codes (`ENVIRONMENT_INSTABILITY`, `FLAKY_UNDER_INVESTIGATION`, `KNOWN_PRODUCT_BUG`), configurable TTL expiration dates, and auditable history logs for soft-passed tests.
+- **Branch-Gated Defect Auto-Resolution**: Defect auto-closure on pass is strictly gated by branch governance (`ADO_AUTO_CLOSE_ALLOWED_BRANCHES=main,master,release/*`). Tests passing on feature branches add non-destructive audit verification comments without premature defect closure.
+- **Structured NDJSON Audit Logging**: Emits machine-readable, SIEM-ingestible audit events (`audit-events.ndjson`) capturing actors, execution hashes, and work item state transitions alongside human-readable console output.
+
 ---
 
 ## 🏗️ Architecture

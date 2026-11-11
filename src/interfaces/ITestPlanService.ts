@@ -38,7 +38,9 @@ export interface ITestPlanService {
         buildNumber: string,
         results: TestCaseResultWithAttachments[],
         pointIds: number[],
-        attachmentPath?: string
+        attachmentPath?: string,
+        additionalRunAttachments?: string[],
+        runComment?: string
     ): Promise<{ runId: number; runUrl: string }>;
     isTestFlaky(testCaseId: number, testName: string): Promise<boolean>;
 }

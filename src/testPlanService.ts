@@ -206,7 +206,9 @@ export class TestPlanService implements ITestPlanService {
     buildNumber: string,
     results: TestCaseResultWithAttachments[],
     pointIds: number[],
-    attachmentPath?: string
+    attachmentPath?: string,
+    additionalRunAttachments?: string[],
+    runComment?: string
   ): Promise<{ runId: number; runUrl: string }> {
     const runModel: RunCreateModel = {
       name: `Run ${buildNumber} - ${suiteName}`,
@@ -215,6 +217,7 @@ export class TestPlanService implements ITestPlanService {
       build: { id: String(buildId) },
       automated: true,
       configurationIds: [],
+      comment: runComment,
     };
 
     const testRun = await this.testApi.createTestRun(runModel, this.project);
@@ -223,32 +226,39 @@ export class TestPlanService implements ITestPlanService {
     }
     this.logger.log(`🚀 Created Test Run: ${testRun.id}`);
 
-    if (attachmentPath) {
+    const runFilesToAttach = [
+      ...(attachmentPath ? [attachmentPath] : []),
+      ...(additionalRunAttachments || []),
+    ];
+
+    for (const filePath of runFilesToAttach) {
       try {
-        if (!isSafePath(attachmentPath)) {
-          this.logger.warn(`⚠️ Security Risk: Attachment path '${attachmentPath}' traverses outside the working directory (or symlinked outside). Skipping.`);
-        } else if (fs.existsSync(attachmentPath)) {
-          if (!this.isAttachmentTooLarge(attachmentPath)) {
-            const fileContent = fs.readFileSync(attachmentPath);
+        if (!isSafePath(filePath)) {
+          this.logger.warn(`⚠️ Security Risk: Attachment path '${filePath}' traverses outside the working directory (or symlinked outside). Skipping.`);
+        } else if (fs.existsSync(filePath)) {
+          if (!this.isAttachmentTooLarge(filePath)) {
+            const fileContent = fs.readFileSync(filePath);
             const encoded = fileContent.toString("base64");
             const attachmentRequest: TestAttachmentRequestModel = {
-              fileName: path.basename(attachmentPath),
+              fileName: path.basename(filePath),
               stream: encoded,
               attachmentType: "GeneralAttachment",
-              comment: "Attached by ADO Test Reporter",
+              comment: filePath.endsWith(".json")
+                ? "Cryptographic Audit Evidence Manifest"
+                : "Attached by ADO Test Reporter",
             };
             await this.testApi.createTestRunAttachment(
               attachmentRequest,
               this.project,
               testRun.id
             );
-            this.logger.log(`📎 Attached file: ${attachmentPath}`);
+            this.logger.log(`📎 Attached file to run ${testRun.id}: ${filePath}`);
           }
         } else {
-          this.logger.warn(`⚠️ Attachment file not found: ${attachmentPath}`);
+          this.logger.warn(`⚠️ Attachment file not found: ${filePath}`);
         }
       } catch (err) {
-        this.logger.warn(`⚠️ Failed to attach file: ${err}`);
+        this.logger.warn(`⚠️ Failed to attach file ${filePath}: ${err}`);
       }
     }
 

@@ -7,6 +7,7 @@ import { App } from "./App";
 import { IConfigService } from "./interfaces/IConfigService";
 import { IAzureClientProvider } from "./interfaces/IAzureClientProvider";
 import { ConsoleLogger } from "./ConsoleLogger";
+import { AuditLogger } from "./AuditLogger";
 import { JUnitParser } from "./junitParser";
 import { TestCaseService } from "./testCaseService";
 import { TestPlanService } from "./testPlanService";
@@ -77,6 +78,12 @@ async function run() {
         default: "reports/ado-test-runs-dashboard.html",
         describe: "Output path for generated HTML dashboard",
       },
+      "audit-evidence-output": {
+        type: "string",
+        demandOption: false,
+        default: "reports/audit-evidence.json",
+        describe: "Output path for generated cryptographic SHA-256 audit manifest",
+      },
     })
     .parseSync();
 
@@ -86,8 +93,28 @@ async function run() {
   const env = configService.loadEnvironment();
   const args = configService.loadArgs(argv, defaultJUnit);
 
-  const clients = await azureClientProvider.createClients(env.token, env.orgUrl);
-  const logger = new ConsoleLogger();
+  const logger = new AuditLogger(env.auditLogPath);
+  logger.logAudit({
+    eventType: "EXECUTION_STARTED",
+    level: "INFO",
+    action: "Starting ADO test sync execution",
+    actor: env.triggerActor,
+    buildId: env.buildId,
+    commitSha: env.commitSha,
+    details: {
+      project: env.project,
+      branch: env.branch,
+      authType: env.authType,
+      autoCloseTargetState: env.autoCloseTargetState,
+    },
+  });
+
+  const clients = await azureClientProvider.createClients(
+    env.token,
+    env.orgUrl,
+    env.authType,
+    logger
+  );
   const parser = new JUnitParser();
 
   // Instantiate Services
@@ -114,7 +141,10 @@ async function run() {
     env.project,
     env.orgUrl,
     logger,
-    env.defectType
+    env.defectType,
+    env.autoCloseAllowedBranches,
+    env.autoCloseTargetState,
+    env.branch
   );
   const quarantineService = new QuarantineService(logger);
   const app = new App(
@@ -125,6 +155,17 @@ async function run() {
     logger,
     quarantineService
   );
+
+  const provenance = {
+    commitSha: env.commitSha,
+    branch: env.branch,
+    buildId: env.buildId,
+    buildNumber: env.buildNumber,
+    buildUri: env.buildUri,
+    triggerActor: env.triggerActor,
+    agentName: env.agentName,
+    timestamp: new Date().toISOString(),
+  };
 
   const runOptions: RunOptions = {
     planName: args.planName,
@@ -140,9 +181,22 @@ async function run() {
     generateDashboard: args.generateDashboard,
     dashboardDays: args.dashboardDays,
     dashboardOutput: args.dashboardOutput,
+    auditEvidenceOutput: args.auditEvidenceOutput,
+    provenance: provenance,
+    quarantineFailOnExpired: env.quarantineFailOnExpired,
   };
 
   await app.run(runOptions, args.junitFile);
+
+  logger.logAudit({
+    eventType: "EXECUTION_COMPLETED",
+    level: "INFO",
+    action: "Completed ADO test sync execution",
+    actor: env.triggerActor,
+    buildId: env.buildId,
+    commitSha: env.commitSha,
+    status: "SUCCESS",
+  });
 
   if (args.generateDashboard) {
     const days = args.dashboardDays || 30;

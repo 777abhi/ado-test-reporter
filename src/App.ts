@@ -5,6 +5,8 @@ import { ILogger } from "./interfaces/ILogger";
 import { ITestResultParser } from "./interfaces/ITestResultParser";
 import { RunOptions } from "./interfaces/RunOptions";
 import { IQuarantineService } from "./interfaces/IQuarantineService";
+import { AuditEvidenceService } from "./AuditEvidenceService";
+import { ExecutionProvenance, ArtifactAuditRecord } from "./interfaces/IAuditManifest";
 import * as fs from "fs";
 import * as path from "path";
 import { isSafePath } from "./utils/PathUtils";
@@ -13,17 +15,44 @@ import { isSafePath } from "./utils/PathUtils";
 const TC_ID_REGEX = /TC(\d+)/i;
 
 export class App {
+    private auditEvidenceService: AuditEvidenceService;
+
     constructor(
         private testCaseService: ITestCaseService,
         private testPlanService: ITestPlanService,
         private failureTaskService: IFailureTaskService,
         private parser: ITestResultParser,
         private logger: ILogger,
-        private quarantineService?: IQuarantineService
-    ) { }
+        private quarantineService?: IQuarantineService,
+        auditEvidenceService?: AuditEvidenceService
+    ) {
+        this.auditEvidenceService = auditEvidenceService || new AuditEvidenceService(logger);
+    }
 
     async run(options: RunOptions, junitFile: string) {
         const { planName, suiteName, buildId, buildNumber, attachResults, createFailureTasks, autoCloseOnPass } = options;
+
+        // Check for expired quarantines if configured
+        if (this.quarantineService) {
+            const expired = this.quarantineService.checkExpirations();
+            if (expired.length > 0 && options.quarantineFailOnExpired) {
+                const expiredKeys = expired.map((e) => e.testKey).join(", ");
+                throw new Error(
+                    `❌ [SECURITY_GOVERNANCE] Build failed due to expired quarantined tests: ${expiredKeys}. Renew or graduate them.`
+                );
+            }
+        }
+
+        const provenance: ExecutionProvenance = options.provenance || {
+            commitSha: process.env.BUILD_SOURCEVERSION || process.env.GIT_COMMIT || "local-head",
+            branch: process.env.BUILD_SOURCEBRANCH || process.env.BUILD_SOURCEBRANCHNAME || "local",
+            buildId: buildId,
+            buildNumber: buildNumber,
+            buildUri: undefined,
+            triggerActor: process.env.BUILD_REQUESTEDFOR || process.env.USER || "automated-agent",
+            agentName: process.env.AGENT_NAME || "local-runner",
+            timestamp: new Date().toISOString(),
+        };
 
         const actualPlanName =
             planName.toLowerCase() === "auto-generate"
@@ -194,6 +223,48 @@ export class App {
             `✅ Publishable results: ${publishableResults.length} (of ${resultsToPublish.length} processed).`
         );
 
+        // Generate Cryptographic Audit Evidence Manifest
+        const artifactRecords: ArtifactAuditRecord[] = [];
+        const junitRecord = this.auditEvidenceService.createArtifactRecord(junitFile, "junit_results");
+        if (junitRecord) artifactRecords.push(junitRecord);
+
+        for (const tc of parsedCases) {
+            if (tc.attachments) {
+                for (const att of tc.attachments) {
+                    const attRecord = this.auditEvidenceService.createArtifactRecord(att, "test_attachment");
+                    if (attRecord && !artifactRecords.some((r) => r.relativePath === attRecord.relativePath)) {
+                        artifactRecords.push(attRecord);
+                    }
+                }
+            }
+        }
+
+        const quarantinedCount = parsedCases.filter(
+            (c) => this.quarantineService?.isQuarantined(undefined, c.name)
+        ).length;
+
+        const manifest = this.auditEvidenceService.createManifest(
+            provenance,
+            artifactRecords,
+            {
+                totalTests: parsedCases.length,
+                passed: passedTestCaseIds.length,
+                failed: failedForTask.length,
+                quarantined: quarantinedCount,
+            }
+        );
+
+        let savedManifestPath: string | undefined;
+        try {
+            const manifestOutputPath = options.auditEvidenceOutput || "reports/audit-evidence.json";
+            savedManifestPath = this.auditEvidenceService.saveManifest(manifest, manifestOutputPath);
+        } catch (err: any) {
+            this.logger.warn(`⚠️ Failed to write audit manifest: ${err?.message || err}`);
+        }
+
+        const runComment = this.auditEvidenceService.formatProvenanceMarkdown(provenance);
+        const additionalAttachments: string[] = savedManifestPath ? [savedManifestPath] : [];
+
         const runInfo = await this.testPlanService.createRunAndPublish(
             planInfo.planId,
             actualSuiteName,
@@ -201,7 +272,9 @@ export class App {
             buildNumber,
             publishableResults,
             pointIds,
-            attachResults ? junitFile : undefined
+            attachResults ? junitFile : undefined,
+            additionalAttachments,
+            runComment
         );
 
         if (createFailureTasks) {
@@ -215,6 +288,7 @@ export class App {
                     runId: runInfo.runId,
                     attachments: failure.attachments,
                     isFlaky: failure.isFlaky,
+                    provenance: provenance,
                 });
             }
         } else {
@@ -226,7 +300,7 @@ export class App {
         if (autoCloseOnPass) {
             this.logger.log(`🔄 Auto-closing defects for ${passedTestCaseIds.length} passed tests...`);
             for (const tcId of passedTestCaseIds) {
-                await this.failureTaskService.resolveTaskForSuccess(tcId, buildNumber);
+                await this.failureTaskService.resolveTaskForSuccess(tcId, buildNumber, provenance);
             }
         }
     }

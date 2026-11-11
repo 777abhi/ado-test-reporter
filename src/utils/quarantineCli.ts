@@ -43,6 +43,20 @@ async function main() {
           default: process.env.USER || "qa-lead",
           describe: "Author / QA lead approving quarantine",
         })
+        .option("defect-id", {
+          type: "string",
+          describe: "Linked ADO Bug/Task/WorkItem ID (e.g. AB#1052 or 1052)",
+        })
+        .option("reason-code", {
+          type: "string",
+          default: "FLAKY_UNDER_INVESTIGATION",
+          describe: "Standardized reason code (e.g. ENVIRONMENT_INSTABILITY, FLAKY_UNDER_INVESTIGATION, KNOWN_PRODUCT_BUG)",
+        })
+        .option("ttl-days", {
+          type: "number",
+          default: 14,
+          describe: "TTL in days before quarantine expires",
+        })
         .option("notes", {
           type: "string",
           describe: "Additional context or linked defect URL",
@@ -102,7 +116,13 @@ async function main() {
             : "⚪ REMOVED";
 
         console.log(`- [${statusBadge}] ${idStr} - "${t.testCaseTitle}"`);
-        console.log(`  Streak: ${t.consecutivePasses}/${t.healingThreshold} passes | Reason: ${t.reason}`);
+        console.log(`  Streak: ${t.consecutivePasses}/${t.healingThreshold} passes | Reason: ${t.reason} [Code: ${t.reasonCode || "N/A"}]`);
+        if (t.linkedWorkItemId) {
+          console.log(`  Linked Defect: ${t.linkedWorkItemId}`);
+        }
+        if (t.expiresAt) {
+          console.log(`  Expires At: ${t.expiresAt} (TTL: ${t.ttlDays || 14}d)`);
+        }
         console.log(`  Quarantined by: ${t.quarantinedBy || "unknown"} on ${t.quarantinedAt}`);
         if (t.lastObservedAt) {
           console.log(`  Last observed: ${t.lastObservedAt} (Outcome: ${t.lastOutcome || "N/A"})`);
@@ -120,12 +140,17 @@ async function main() {
         testCaseId: argv.id as string | undefined,
         testCaseTitle: argv.title as string,
         reason: argv.reason as string,
+        reasonCode: argv["reason-code"] as string | undefined,
+        linkedWorkItemId: argv["defect-id"] as string | undefined,
+        ttlDays: argv["ttl-days"] as number | undefined,
         healingThreshold: argv.threshold as number,
         quarantinedBy: argv.by as string,
         notes: argv.notes as string | undefined,
       });
 
       console.log(`\n✅ Successfully quarantined: "${record.testCaseTitle}" [${record.testKey}]`);
+      console.log(`   Reason Code: ${record.reasonCode || "N/A"} | Linked Defect: ${record.linkedWorkItemId || "none"}`);
+      console.log(`   Expires At: ${record.expiresAt} (TTL: ${record.ttlDays} days)`);
       console.log(`   Healing threshold: ${record.healingThreshold} consecutive passes before graduation recommendation.`);
       console.log(`   Quarantine registry updated at: ${quarantineService.getConfigFilePath()}\n`);
       break;

@@ -13,6 +13,7 @@ import { escapeXml } from "./utils/XmlUtils";
 import { sanitizeForCsv } from "./utils/CsvUtils";
 import { isSafePath } from "./utils/PathUtils";
 import * as crypto from 'crypto';
+import { ExecutionProvenance } from "./interfaces/IAuditManifest";
 
 export class FailureTaskService implements IFailureTaskService {
   constructor(
@@ -20,8 +21,33 @@ export class FailureTaskService implements IFailureTaskService {
     private project: string,
     private orgUrl: string,
     private logger: ILogger,
-    private defectType: string = "Task"
+    private defectType: string = "Task",
+    private autoCloseAllowedBranches: string[] = [
+      "main",
+      "master",
+      "refs/heads/main",
+      "refs/heads/master",
+      "release/*",
+    ],
+    private autoCloseTargetState: string = "Resolved",
+    private currentBranch: string = "local"
   ) { }
+
+  private isBranchAllowedForAutoClose(branch: string): boolean {
+    if (!this.autoCloseAllowedBranches || this.autoCloseAllowedBranches.length === 0) return true;
+    const cleanBranch = branch.trim();
+    return this.autoCloseAllowedBranches.some((pattern) => {
+      if (pattern.endsWith("*")) {
+        const prefix = pattern.slice(0, -1);
+        return cleanBranch.startsWith(prefix) || cleanBranch.replace(/^refs\/heads\//, "").startsWith(prefix);
+      }
+      return (
+        cleanBranch === pattern ||
+        cleanBranch === `refs/heads/${pattern}` ||
+        cleanBranch.replace(/^refs\/heads\//, "") === pattern
+      );
+    });
+  }
 
   private generateErrorHash(message: string): string {
     return crypto.createHash('sha256').update(message).digest('hex');
@@ -314,6 +340,28 @@ export class FailureTaskService implements IFailureTaskService {
       tags += `; ErrorHash:${errorHash}`;
     }
 
+    let provenanceHtml = "";
+    if (failure.provenance) {
+      const p = failure.provenance;
+      provenanceHtml = [
+        `<hr/>`,
+        `<p><b>🛡️ Audit Traceability & Provenance:</b></p>`,
+        `<ul>`,
+        `  <li><b>Commit SHA:</b> <code>${escapeXml(p.commitSha)}</code></li>`,
+        `  <li><b>Branch:</b> <code>${escapeXml(p.branch)}</code></li>`,
+        `  <li><b>Triggered By:</b> <code>${escapeXml(p.triggerActor)}</code></li>`,
+        `  <li><b>Agent:</b> <code>${escapeXml(p.agentName)}</code></li>`,
+        `  <li><b>Timestamp:</b> <code>${escapeXml(p.timestamp)}</code></li>`,
+        `</ul>`,
+      ].join("\n");
+      if (p.commitSha && p.commitSha !== "local-head") {
+        tags += `; Commit:${p.commitSha.substring(0, 8)}`;
+      }
+      if (p.branch) {
+        tags += `; Branch:${p.branch.replace(/^refs\/heads\//, "")}`;
+      }
+    }
+
     // Sentinel: Sanitize inputs to prevent Stored XSS in Work Item description
     const description = [
       `<p>Test failed in build <b>${escapeXml(failure.buildNumber)}</b></p>`,
@@ -321,6 +369,7 @@ export class FailureTaskService implements IFailureTaskService {
       failure.errorMessage
         ? `<pre>${escapeXml(failure.errorMessage)}</pre>`
         : "<p>No error message provided.</p>",
+      provenanceHtml,
     ].join("\n");
 
     const descriptionField =
@@ -389,9 +438,27 @@ export class FailureTaskService implements IFailureTaskService {
     await this.attachFiles(created.id, failure.attachments);
   }
 
-  async resolveTaskForSuccess(testCaseId: string, buildNumber: string): Promise<void> {
+  async resolveTaskForSuccess(
+    testCaseId: string,
+    buildNumber: string,
+    provenance?: ExecutionProvenance
+  ): Promise<void> {
     const existingTaskId = await this.findTaskByLinkedTestCase(testCaseId);
     if (!existingTaskId) return;
+
+    const effectiveBranch = provenance?.branch || this.currentBranch;
+    const isAllowed = this.isBranchAllowedForAutoClose(effectiveBranch);
+
+    if (!isAllowed) {
+      this.logger.log(
+        `🛡️ Governance Check: Skipping auto-close for ${this.defectType} ${existingTaskId} (TC ${testCaseId}). Branch '${effectiveBranch}' is not an authorized release branch.`
+      );
+      await this.addComment(
+        existingTaskId,
+        `[AUDIT] Test Case ${testCaseId} passed in build ${escapeXml(buildNumber)} on non-release branch <code>${escapeXml(effectiveBranch)}</code>. Defect auto-closure is disabled by governance policy on non-release branches.`
+      );
+      return;
+    }
 
     try {
       const task = await this.workItemApi.getWorkItem(
@@ -426,7 +493,11 @@ export class FailureTaskService implements IFailureTaskService {
       const shouldClose = relatedTCCount <= 1;
 
       if (shouldClose) {
-        const comment = `Test passed in build ${escapeXml(buildNumber)}. Auto-closing defect.`;
+        const targetState = this.autoCloseTargetState || "Resolved";
+        const provenanceInfo = provenance
+          ? ` (Commit: ${escapeXml(provenance.commitSha)}, Branch: ${escapeXml(effectiveBranch)}, Actor: ${escapeXml(provenance.triggerActor)})`
+          : "";
+        const comment = `[AUDIT] Auto-resolved by ADO Test Reporter. Verification passed in build ${escapeXml(buildNumber)}${provenanceInfo}. State transitioned to ${targetState}.`;
         patch.push({
           op: Operation.Add,
           path: "/fields/System.History",
@@ -435,10 +506,10 @@ export class FailureTaskService implements IFailureTaskService {
         patch.push({
           op: Operation.Add,
           path: "/fields/System.State",
-          value: "Closed",
+          value: targetState,
         });
       } else {
-        const comment = `Test Case ${testCaseId} passed in build ${escapeXml(buildNumber)}. Removed link. Task remains open for other failures.`;
+        const comment = `[AUDIT] Test Case ${testCaseId} passed in build ${escapeXml(buildNumber)} on branch ${escapeXml(effectiveBranch)}. Removed link. Task remains open for other failures.`;
         patch.push({
           op: Operation.Add,
           path: "/fields/System.History",
@@ -455,7 +526,7 @@ export class FailureTaskService implements IFailureTaskService {
 
       if (shouldClose) {
         this.logger.log(
-          `✅ Auto-closed ${this.defectType} ${existingTaskId} because TC ${testCaseId} passed (last link).`
+          `✅ Auto-closed ${this.defectType} ${existingTaskId} (state: ${this.autoCloseTargetState}) because TC ${testCaseId} passed on branch '${effectiveBranch}'.`
         );
       } else {
         this.logger.log(

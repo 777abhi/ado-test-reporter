@@ -2,6 +2,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as dotenv from "dotenv";
 import { AppEnv, AppArgs, IConfigService } from "./interfaces/IConfigService";
+import { SecretRedactor } from "./utils/SecretRedactor";
 
 export class ConfigService implements IConfigService {
   loadEnvironment(): AppEnv {
@@ -48,11 +49,51 @@ export class ConfigService implements IConfigService {
       .map((f) => f.trim())
       .filter((f) => f.length > 0);
 
+    const commitSha =
+      process.env.BUILD_SOURCEVERSION || process.env.GIT_COMMIT || "local-head";
+    const branch =
+      process.env.BUILD_SOURCEBRANCH ||
+      process.env.BUILD_SOURCEBRANCHNAME ||
+      process.env.GIT_BRANCH ||
+      "local";
+    const triggerActor =
+      process.env.BUILD_REQUESTEDFOR ||
+      process.env.BUILD_REQUESTEDFOREMAIL ||
+      process.env.USER ||
+      "automated-agent";
+    const agentName =
+      process.env.AGENT_NAME || process.env.HOSTNAME || "local-runner";
+    const buildUri =
+      orgUrl && project && buildId
+        ? `${orgUrl.replace(/\/+$/, "")}/${project}/_build/results?buildId=${buildId}`
+        : process.env.BUILD_BUILDURI || "";
+
+    const authType = process.env.ADO_AUTH_TYPE || "auto";
+    const autoCloseAllowedBranches = (
+      process.env.ADO_AUTO_CLOSE_ALLOWED_BRANCHES ||
+      "main,master,refs/heads/main,refs/heads/master,release/*"
+    )
+      .split(",")
+      .map((b) => b.trim())
+      .filter((b) => b.length > 0);
+
+    const autoCloseTargetState =
+      process.env.ADO_AUTO_CLOSE_TARGET_STATE || "Resolved";
+    const quarantineFailOnExpired = this.parseBoolean(
+      process.env.ADO_QUARANTINE_FAIL_ON_EXPIRED,
+      false
+    );
+    const auditLogPath =
+      process.env.ADO_AUDIT_LOG_PATH || "audit-events.ndjson";
+
     if (!token || !orgUrl || !project) {
       throw new Error(
         "Missing required environment variables (token/orgUrl/project). Provide SYSTEM_* values in pipeline or set ADO_TOKEN, ADO_ORG_URL, ADO_PROJECT locally."
       );
     }
+
+    // Security: dynamically register authentication token into secret redactor
+    SecretRedactor.registerSecret(token);
 
     return {
       token,
@@ -69,6 +110,16 @@ export class ConfigService implements IConfigService {
       autoCreateSuite,
       htmlFields,
       detectFlakyTests,
+      commitSha,
+      branch,
+      buildUri,
+      triggerActor,
+      agentName,
+      authType,
+      autoCloseAllowedBranches,
+      autoCloseTargetState,
+      quarantineFailOnExpired,
+      auditLogPath,
     };
   }
 
@@ -82,6 +133,7 @@ export class ConfigService implements IConfigService {
     const generateDashboard = !!argv["generate-dashboard"];
     const dashboardDays = argv["dashboard-days"] ? Number(argv["dashboard-days"]) : 30;
     const dashboardOutput = argv["dashboard-output"];
+    const auditEvidenceOutput = argv["audit-evidence-output"];
     return {
       junitFile,
       planName,
@@ -92,6 +144,7 @@ export class ConfigService implements IConfigService {
       generateDashboard,
       dashboardDays,
       dashboardOutput,
+      auditEvidenceOutput,
     };
   }
 

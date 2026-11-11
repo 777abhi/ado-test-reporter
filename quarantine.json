@@ -9,9 +9,21 @@
       "quarantinedAt": "2026-11-10T18:44:13.872Z",
       "quarantinedBy": "qa-lead",
       "reason": "Flaky payment gateway socket timeouts",
+      "reasonCode": "ENVIRONMENT_INSTABILITY",
+      "linkedWorkItemId": "AB#1015",
+      "ttlDays": 30,
+      "expiresAt": "2026-12-10T18:44:13.872Z",
       "consecutivePasses": 0,
       "healingThreshold": 5,
-      "status": "active"
+      "status": "active",
+      "auditHistory": [
+        {
+          "action": "quarantined",
+          "timestamp": "2026-11-10T18:44:13.872Z",
+          "actor": "qa-lead",
+          "details": "Quarantined for 30d (Reason: ENVIRONMENT_INSTABILITY). Linked Defect: AB#1015"
+        }
+      ]
     }
   ]
 }

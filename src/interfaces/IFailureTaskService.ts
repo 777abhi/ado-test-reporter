@@ -1,4 +1,6 @@
 
+import { ExecutionProvenance } from "./IAuditManifest";
+
 export type FailureInfo = {
     testCaseId: string;
     testName: string;
@@ -8,9 +10,10 @@ export type FailureInfo = {
     runId: number;
     attachments?: string[];
     isFlaky?: boolean;
+    provenance?: ExecutionProvenance;
 };
 
 export interface IFailureTaskService {
     createTaskForFailure(failure: FailureInfo): Promise<void>;
-    resolveTaskForSuccess(testCaseId: string, buildNumber: string): Promise<void>;
+    resolveTaskForSuccess(testCaseId: string, buildNumber: string, provenance?: ExecutionProvenance): Promise<void>;
 }
