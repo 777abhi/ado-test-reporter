@@ -1,3 +1,5 @@
+import { ExecutionProvenance } from "./IAuditManifest";
+
 export interface RunOptions {
     planName: string;
     suiteName: string;
@@ -12,4 +14,8 @@ export interface RunOptions {
     generateDashboard?: boolean;
     dashboardDays?: number;
     dashboardOutput?: string;
+    auditEvidenceOutput?: string;
+    provenance?: ExecutionProvenance;
+    quarantineFailOnExpired?: boolean;
 }
+

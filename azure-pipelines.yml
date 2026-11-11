@@ -81,4 +81,16 @@ steps:
       SYSTEM_TEAMPROJECT: $(System.TeamProject)
       BUILD_BUILDID: $(Build.BuildId)
       BUILD_BUILDNUMBER: $(Build.BuildNumber)
+      BUILD_SOURCEVERSION: $(Build.SourceVersion)
+      BUILD_SOURCEBRANCH: $(Build.SourceBranch)
+      BUILD_REQUESTEDFOR: $(Build.RequestedFor)
+      AGENT_NAME: $(Agent.Name)
       CREATE_FAILURE_TASKS: $(CREATE_FAILURE_TASKS)
+
+  - task: PublishPipelineArtifact@1
+    displayName: "Publish Security & Audit Evidence"
+    condition: always()
+    inputs:
+      targetPath: "$(System.DefaultWorkingDirectory)/reports"
+      artifact: "AuditEvidence"
+      publishLocation: "pipeline"

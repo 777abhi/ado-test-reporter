@@ -32,8 +32,29 @@ export class SecretRedactor {
     // Updated: Key can be quoted (e.g. "access_token": "value") and 'token' added back.
     private static readonly GENERIC_PATTERN = /(?:["']?)\b(password|pwd|secret|access_token|api_token|auth_token|access_key|api_key|client_secret|token)(?:["']?)\s*[:=]\s*(?:"([^"]+)"|'([^']+)'|([^"'\s,;]+))/gi;
 
+    private static readonly dynamicSecrets: Set<string> = new Set();
+
     /**
-     * Redacts known secret patterns from the input text.
+     * Dynamically registers a secret string to be redacted.
+     * Values with fewer than 4 characters are ignored to prevent accidental over-redaction.
+     */
+    public static registerSecret(secret: string | undefined | null): void {
+        if (!secret) return;
+        const trimmed = secret.trim();
+        if (trimmed.length >= 4) {
+            this.dynamicSecrets.add(trimmed);
+        }
+    }
+
+    /**
+     * Clears all dynamically registered secrets.
+     */
+    public static clearDynamicSecrets(): void {
+        this.dynamicSecrets.clear();
+    }
+
+    /**
+     * Redacts known secret patterns and dynamically registered secrets from the input text.
      * @param text The text to sanitize.
      * @returns The sanitized text with secrets replaced by ***REDACTED***.
      */
@@ -41,7 +62,17 @@ export class SecretRedactor {
         if (!text) return "";
         let redacted = text;
 
-        // 1. Redact specific token formats
+        // 1. Redact dynamically registered secrets (sorted descending by length)
+        if (this.dynamicSecrets.size > 0) {
+            const sortedSecrets = Array.from(this.dynamicSecrets).sort((a, b) => b.length - a.length);
+            for (const sec of sortedSecrets) {
+                // Escape special regex characters in the secret value
+                const escaped = sec.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                redacted = redacted.replace(new RegExp(escaped, 'g'), '***REDACTED***');
+            }
+        }
+
+        // 2. Redact specific token formats
         for (const pattern of this.TOKEN_PATTERNS) {
             redacted = redacted.replace(pattern, '***REDACTED***');
         }

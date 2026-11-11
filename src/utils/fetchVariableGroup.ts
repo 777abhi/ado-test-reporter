@@ -85,6 +85,9 @@ async function run() {
     for (const [key, variableValue] of Object.entries(exactGroup.variables)) {
       // variableValue type has value?: string, isSecret?: boolean
       const val = variableValue.value || "";
+      if (variableValue.isSecret && val) {
+        SecretRedactor.registerSecret(val);
+      }
       // Escape newlines and quotes if needed for .env format
       let formattedVal = val;
       if (formattedVal.includes('\n') || formattedVal.includes('"') || formattedVal.includes("'")) {

@@ -13,6 +13,7 @@ import { isSafePath } from "./utils/PathUtils";
 
 const TC_ID_REGEX = /TC(\d+)/i;
 const DEFAULT_HEALING_THRESHOLD = 5;
+const DEFAULT_TTL_DAYS = 14;
 
 export class QuarantineService implements IQuarantineService {
   private configFilePath: string;
@@ -102,9 +103,22 @@ export class QuarantineService implements IQuarantineService {
     return str;
   }
 
-  isQuarantined(testCaseId?: string | number, testName?: string): boolean {
+  isQuarantined(testCaseId?: string | number, testName?: string, checkExpiry: boolean = true): boolean {
     const record = this.getQuarantinedTest(testCaseId, testName);
-    return Boolean(record && record.status === "active");
+    if (!record || record.status !== "active") return false;
+
+    if (checkExpiry && record.expiresAt) {
+      const now = new Date();
+      const expiresAt = new Date(record.expiresAt);
+      if (now > expiresAt) {
+        this.logger.warn(
+          `⚠️ [QUARANTINE_EXPIRED] Test '${record.testCaseTitle}' [${record.testKey}] quarantine expired on ${record.expiresAt} (TTL exceeded).`
+        );
+        return false;
+      }
+    }
+
+    return true;
   }
 
   getQuarantinedTest(
@@ -173,17 +187,34 @@ export class QuarantineService implements IQuarantineService {
 
     const now = new Date().toISOString();
     const healingThreshold = options.healingThreshold ?? DEFAULT_HEALING_THRESHOLD;
+    const ttlDays = options.ttlDays ?? DEFAULT_TTL_DAYS;
+    const expiresAt = new Date(Date.now() + ttlDays * 86400000).toISOString();
+    const reasonCode = options.reasonCode || "UNSPECIFIED";
+    const linkedWorkItemId = options.linkedWorkItemId;
 
     if (existingIndex >= 0) {
       const existing = config.quarantinedTests[existingIndex];
       existing.status = "active";
       existing.reason = options.reason || existing.reason;
+      existing.reasonCode = reasonCode || existing.reasonCode;
+      existing.linkedWorkItemId = linkedWorkItemId || existing.linkedWorkItemId;
       existing.quarantinedBy = options.quarantinedBy || existing.quarantinedBy;
       existing.healingThreshold = healingThreshold;
+      existing.ttlDays = ttlDays;
+      existing.expiresAt = expiresAt;
       existing.lastObservedAt = now;
       if (options.notes) existing.notes = options.notes;
+
+      if (!existing.auditHistory) existing.auditHistory = [];
+      existing.auditHistory.push({
+        action: "re_quarantined",
+        timestamp: now,
+        actor: options.quarantinedBy,
+        details: `Re-quarantined for ${ttlDays}d (Reason: ${reasonCode}). Linked Defect: ${linkedWorkItemId || "none"}`,
+      });
+
       this.save(config);
-      this.logger.log(`🛡️ Test '${existing.testCaseTitle}' [${existing.testKey}] re-quarantined successfully.`);
+      this.logger.log(`🛡️ Test '${existing.testCaseTitle}' [${existing.testKey}] re-quarantined successfully (Expires: ${expiresAt}).`);
       return existing;
     }
 
@@ -194,19 +225,31 @@ export class QuarantineService implements IQuarantineService {
       quarantinedAt: now,
       quarantinedBy: options.quarantinedBy || "unknown",
       reason: options.reason,
+      reasonCode,
+      linkedWorkItemId,
+      ttlDays,
+      expiresAt,
       consecutivePasses: 0,
       healingThreshold,
       status: "active",
       notes: options.notes,
+      auditHistory: [
+        {
+          action: "quarantined",
+          timestamp: now,
+          actor: options.quarantinedBy,
+          details: `Quarantined for ${ttlDays}d (Reason: ${reasonCode}). Linked Defect: ${linkedWorkItemId || "none"}`,
+        },
+      ],
     };
 
     config.quarantinedTests.push(record);
     this.save(config);
-    this.logger.log(`🛡️ Test '${record.testCaseTitle}' [${record.testKey}] added to quarantine.`);
+    this.logger.log(`🛡️ Test '${record.testCaseTitle}' [${record.testKey}] added to quarantine (Expires: ${expiresAt}).`);
     return record;
   }
 
-  unquarantineTest(testKeyOrId: string, reason?: string): boolean {
+  unquarantineTest(testKeyOrId: string, reason?: string, actor?: string): boolean {
     const config = this.load();
     const normalizedInputId = QuarantineService.normalizeTestCaseId(testKeyOrId);
     const lowerKey = testKeyOrId.trim().toLowerCase();
@@ -226,12 +269,20 @@ export class QuarantineService implements IQuarantineService {
     if (reason) {
       target.notes = target.notes ? `${target.notes} | Unquarantine: ${reason}` : `Unquarantine: ${reason}`;
     }
+    if (!target.auditHistory) target.auditHistory = [];
+    target.auditHistory.push({
+      action: "unquarantined",
+      timestamp: new Date().toISOString(),
+      actor,
+      details: reason || "Manual unquarantine",
+    });
+
     this.save(config);
     this.logger.log(`✅ Test '${target.testCaseTitle}' [${target.testKey}] removed from quarantine.`);
     return true;
   }
 
-  graduateTest(testKeyOrId: string, notes?: string): boolean {
+  graduateTest(testKeyOrId: string, notes?: string, actor?: string): boolean {
     const config = this.load();
     const normalizedInputId = QuarantineService.normalizeTestCaseId(testKeyOrId);
     const lowerKey = testKeyOrId.trim().toLowerCase();
@@ -247,11 +298,20 @@ export class QuarantineService implements IQuarantineService {
       return false;
     }
 
+    const now = new Date().toISOString();
     target.status = "graduated";
-    target.graduatedAt = new Date().toISOString();
+    target.graduatedAt = now;
     if (notes) {
       target.notes = target.notes ? `${target.notes} | Graduation: ${notes}` : `Graduation: ${notes}`;
     }
+    if (!target.auditHistory) target.auditHistory = [];
+    target.auditHistory.push({
+      action: "graduated",
+      timestamp: now,
+      actor,
+      details: `Graduated after ${target.consecutivePasses} consecutive passes. ${notes || ""}`.trim(),
+    });
+
     this.save(config);
     this.logger.log(`🎓 Test '${target.testCaseTitle}' [${target.testKey}] graduated from quarantine with ${target.consecutivePasses} passes!`);
     return true;
@@ -273,9 +333,32 @@ export class QuarantineService implements IQuarantineService {
       };
     }
 
-    const now = new Date().toISOString();
+    const now = new Date();
+    const isExpired = Boolean(record.expiresAt && now > new Date(record.expiresAt));
+
+    if (isExpired) {
+      this.logger.warn(
+        `⚠️ [QUARANTINE_EXPIRED] Test '${record.testCaseTitle}' [${record.testKey}] quarantine expired on ${record.expiresAt} (TTL exceeded).`
+      );
+      record.status = "expired";
+      if (!record.auditHistory) record.auditHistory = [];
+      record.auditHistory.push({
+        action: "expired",
+        timestamp: now.toISOString(),
+        details: `Quarantine expired on ${record.expiresAt} during execution outcome check.`,
+      });
+      this.save(config);
+      return {
+        record,
+        isQuarantined: false,
+        isReadyForGraduation: false,
+        isExpired: true,
+      };
+    }
+
+    const nowIso = now.toISOString();
     const lowerOutcome = (outcome || "").trim().toLowerCase();
-    record.lastObservedAt = now;
+    record.lastObservedAt = nowIso;
     record.lastOutcome = outcome;
 
     if (lowerOutcome === "passed") {
@@ -297,7 +380,37 @@ export class QuarantineService implements IQuarantineService {
       record,
       isQuarantined: true,
       isReadyForGraduation,
+      isExpired: false,
     };
+  }
+
+  checkExpirations(): QuarantinedTestRecord[] {
+    const config = this.load();
+    const now = new Date();
+    const expiredRecords: QuarantinedTestRecord[] = [];
+
+    for (const record of config.quarantinedTests) {
+      if (record.status === "active" && record.expiresAt) {
+        if (now > new Date(record.expiresAt)) {
+          record.status = "expired";
+          if (!record.auditHistory) record.auditHistory = [];
+          record.auditHistory.push({
+            action: "expired",
+            timestamp: now.toISOString(),
+            details: `Quarantine TTL exceeded. Expired at ${record.expiresAt}.`,
+          });
+          expiredRecords.push(record);
+          this.logger.warn(
+            `⚠️ [QUARANTINE_EXPIRED] Test '${record.testCaseTitle}' [${record.testKey}] quarantine expired on ${record.expiresAt}. Status transitioned to expired.`
+          );
+        }
+      }
+    }
+
+    if (expiredRecords.length > 0) {
+      this.save(config);
+    }
+    return expiredRecords;
   }
 
   private findMatchingRecord(

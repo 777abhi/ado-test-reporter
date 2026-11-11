@@ -14,6 +14,16 @@ export type AppEnv = {
     autoCreateSuite: boolean;
     htmlFields: string[];
     detectFlakyTests: boolean;
+    commitSha: string;
+    branch: string;
+    buildUri: string;
+    triggerActor: string;
+    agentName: string;
+    authType: "auto" | "bearer" | "pat" | string;
+    autoCloseAllowedBranches: string[];
+    autoCloseTargetState: string;
+    quarantineFailOnExpired: boolean;
+    auditLogPath: string;
 };
 
 export type AppArgs = {
@@ -26,6 +36,7 @@ export type AppArgs = {
     generateDashboard?: boolean;
     dashboardDays?: number;
     dashboardOutput?: string;
+    auditEvidenceOutput?: string;
 };
 
 export interface IConfigService {
