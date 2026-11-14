@@ -85,6 +85,31 @@ async function run() {
         default: "reports/audit-evidence.json",
         describe: "Output path for generated cryptographic SHA-256 audit manifest",
       },
+      "pr-gate": {
+        type: "boolean",
+        demandOption: false,
+        describe: "Evaluate Azure Repos PR Quality Gate after publishing test results",
+      },
+      "pr-id": {
+        type: "number",
+        demandOption: false,
+        describe: "Azure Repos Pull Request ID (defaults to SYSTEM_PULLREQUEST_PULLREQUESTID)",
+      },
+      "pr-repo": {
+        type: "string",
+        demandOption: false,
+        describe: "Azure Repos repository ID or name (defaults to BUILD_REPOSITORY_ID)",
+      },
+      "pr-target-branch": {
+        type: "string",
+        demandOption: false,
+        describe: "Target branch for baseline comparison (defaults to SYSTEM_PULLREQUEST_TARGETBRANCH or refs/heads/main)",
+      },
+      "pr-status-check": {
+        type: "boolean",
+        demandOption: false,
+        describe: "Publish an Azure Repos PR Status Check in addition to the PR comment",
+      },
     })
     .parseSync();
 

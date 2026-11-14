@@ -91,6 +91,7 @@ flowchart TD
     Start --> W4["4. Flaky Test Quarantine CLI"]
     Start --> W5["5. Import Test Cases from Excel"]
     Start --> W6["6. Azure Pipelines CI/CD Setup"]
+    Start --> W7["7. Azure Repos PR Quality Gates"]
 ```
 
 ---
@@ -274,6 +275,36 @@ Use this workflow to embed automated reporting directly into an Azure DevOps Pip
 
 ---
 
+#### 🚦 Workflow 7: Azure Repos PR Quality Gates
+
+Use this workflow in Pull Request validation builds to compare JUnit failures against the target branch's latest baseline Test Run, post a rich markdown diff comment on the Azure Repos PR, optionally publish a PR Status Check, and fail the build only on **new regressions** (ignoring known baseline failures and quarantined tests).
+
+**Agent Interactive Questions to Ask User:**
+> 1. *"Do you want to run the PR Quality Gate standalone (`npm run pr-gate`) or combined with Test Plan sync (`npm start -- --pr-gate`)?"*
+> 2. *"Should the gate also publish an Azure Repos PR Status Check (`--pr-status-check`), or only post a PR comment thread?"*
+> 3. *"Which target branch should be used for baseline comparison (default is `SYSTEM_PULLREQUEST_TARGETBRANCH` or `refs/heads/main`)?"*
+
+**Execution Commands:**
+```bash
+# Option A: Standalone PR Quality Gate check (reads SYSTEM_PULLREQUEST_* in pipelines)
+npm run pr-gate -- \
+  --junit-file path/to/junit.xml \
+  --pr-id 42 \
+  --pr-repo my-repo \
+  --pr-target-branch refs/heads/main \
+  --pr-status-check
+
+# Option B: Sync results to Azure Test Plans AND evaluate PR Quality Gate in one step
+npm start -- \
+  --junit-file path/to/junit.xml \
+  --plan-name "PR Validation" \
+  --suite-name "Automated Suite" \
+  --pr-gate \
+  --pr-status-check
+```
+
+---
+
 ### 🔍 Phase 4: Diagnostic & Troubleshooting Decision Tree
 
 When encountering issues, AI agents and developers should follow this decision matrix:
@@ -374,25 +405,33 @@ Enterprise-grade compliance, least-privilege identity, and tamper-evident proven
 - **Branch-Gated Defect Auto-Resolution**: Defect auto-closure on pass is strictly gated by branch governance (`ADO_AUTO_CLOSE_ALLOWED_BRANCHES=main,master,release/*`). Tests passing on feature branches add non-destructive audit verification comments without premature defect closure.
 - **Structured NDJSON Audit Logging**: Emits machine-readable, SIEM-ingestible audit events (`audit-events.ndjson`) capturing actors, execution hashes, and work item state transitions alongside human-readable console output.
 
+### 11. 🚦 Azure Repos PR Quality Gates (Baseline Failure Diffing)
+Prevents PR builds from being blocked by pre-existing main-branch failures while catching new regressions immediately:
+- **Baseline Failure Diffing**: Queries the target branch's latest completed Test Run in Azure DevOps and classifies current failures into **New Regressions**, **Known Baseline Failures**, and **Quarantined Failures**.
+- **Rich PR Comment Threads**: Posts (and updates in-place) a structured Markdown summary directly on the Azure Repos Pull Request with regression details, baseline run links, and quarantine status.
+- **PR Status Checks**: Optionally publishes a native Git PR Status Check (`ado-test-reporter/quality-gate`) for branch policy enforcement.
+- **Zero-Noise Gating**: Fails the pipeline (`exit 1`) only when new, unquarantined regressions are introduced.
+
 ---
 
 ## 🏗️ Architecture
 
 This project follows **SOLID principles** and clean architectural separation:
-- **Service-Oriented**: Distinct services for Configuration (`ConfigService`), Test Plans (`TestPlanService`), Cases (`TestCaseService`), Sync (`AdoSyncService`), Analytics (`DashboardDataService`, `DashboardCacheRepository`, `DashboardHtmlGenerator`), and Quarantine (`QuarantineService`).
+- **Service-Oriented**: Distinct services for Configuration (`ConfigService`), Test Plans (`TestPlanService`), Cases (`TestCaseService`), Sync (`AdoSyncService`), Analytics (`DashboardDataService`, `DashboardCacheRepository`, `DashboardHtmlGenerator`), Quarantine (`QuarantineService`), and PR Gating (`PrQualityGateService`).
 - **Dependency Injection**: Dependencies are injected via TypeScript interfaces, making services easily testable and mockable.
 - **Orchestrator Pattern**: The main `App` class orchestrates the end-to-end sync workflow.
 
 ```
 src/
 ├── interfaces/             # TypeScript contracts and interfaces
-├── utils/                  # CLI utilities (quarantine, dashboard, excel, variable groups)
+├── utils/                  # CLI utilities (quarantine, dashboard, pr-gate, excel, variable groups)
 ├── AdoSyncService.ts       # Gherkin scenario to ADO test case synchronizer
 ├── App.ts                  # Main execution orchestrator
 ├── AzureClientProvider.ts  # ADO REST API client factory
 ├── ConfigService.ts        # Environment & CLI argument loader
 ├── Dashboard*.ts           # Analytics cache, data service, HTML generator, and server
 ├── GherkinFeatureParser.ts # Gherkin AST parser
+├── PrQualityGateService.ts # Azure Repos PR baseline diffing & quality gate
 ├── QuarantineService.ts    # Flaky test quarantine management
 ├── failureTaskService.ts   # Work item creation and duplicate prevention
 ├── junitParser.ts          # JUnit XML parser
