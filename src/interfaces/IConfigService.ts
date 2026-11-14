@@ -24,6 +24,12 @@ export type AppEnv = {
     autoCloseTargetState: string;
     quarantineFailOnExpired: boolean;
     auditLogPath: string;
+    prGateEnabled: boolean;
+    prId: number;
+    prRepositoryId: string;
+    prTargetBranch: string;
+    prSourceBranch: string;
+    prStatusCheck: boolean;
 };
 
 export type AppArgs = {
@@ -37,6 +43,11 @@ export type AppArgs = {
     dashboardDays?: number;
     dashboardOutput?: string;
     auditEvidenceOutput?: string;
+    prGate?: boolean;
+    prId?: number;
+    prRepo?: string;
+    prTargetBranch?: string;
+    prStatusCheck?: boolean;
 };
 
 export interface IConfigService {

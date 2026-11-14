@@ -85,6 +85,19 @@ export class ConfigService implements IConfigService {
     );
     const auditLogPath =
       process.env.ADO_AUDIT_LOG_PATH || "audit-events.ndjson";
+    const prGateEnabled = this.parseBoolean(process.env.ADO_PR_GATE, false);
+    const prIdRaw =
+      process.env.SYSTEM_PULLREQUEST_PULLREQUESTID || process.env.ADO_PR_ID || "0";
+    const prId = parseInt(prIdRaw, 10) || 0;
+    const prRepositoryId =
+      process.env.BUILD_REPOSITORY_ID || process.env.ADO_PR_REPOSITORY_ID || "";
+    const prTargetBranch =
+      process.env.SYSTEM_PULLREQUEST_TARGETBRANCH ||
+      process.env.ADO_PR_TARGET_BRANCH ||
+      "refs/heads/main";
+    const prSourceBranch =
+      process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH || branch;
+    const prStatusCheck = this.parseBoolean(process.env.ADO_PR_STATUS_CHECK, false);
 
     if (!token || !orgUrl || !project) {
       throw new Error(
@@ -120,6 +133,12 @@ export class ConfigService implements IConfigService {
       autoCloseTargetState,
       quarantineFailOnExpired,
       auditLogPath,
+      prGateEnabled,
+      prId,
+      prRepositoryId,
+      prTargetBranch,
+      prSourceBranch,
+      prStatusCheck,
     };
   }
 
@@ -134,6 +153,12 @@ export class ConfigService implements IConfigService {
     const dashboardDays = argv["dashboard-days"] ? Number(argv["dashboard-days"]) : 30;
     const dashboardOutput = argv["dashboard-output"];
     const auditEvidenceOutput = argv["audit-evidence-output"];
+    const prGate = argv["pr-gate"] !== undefined ? !!argv["pr-gate"] : undefined;
+    const prId = argv["pr-id"] !== undefined ? Number(argv["pr-id"]) : undefined;
+    const prRepo = argv["pr-repo"];
+    const prTargetBranch = argv["pr-target-branch"];
+    const prStatusCheck =
+      argv["pr-status-check"] !== undefined ? !!argv["pr-status-check"] : undefined;
     return {
       junitFile,
       planName,
@@ -145,6 +170,11 @@ export class ConfigService implements IConfigService {
       dashboardDays,
       dashboardOutput,
       auditEvidenceOutput,
+      prGate,
+      prId,
+      prRepo,
+      prTargetBranch,
+      prStatusCheck,
     };
   }
 

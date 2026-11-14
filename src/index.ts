@@ -18,6 +18,7 @@ import { DashboardCacheRepository } from "./DashboardCacheRepository";
 import { DashboardDataService } from "./DashboardDataService";
 import { DashboardHtmlGenerator } from "./DashboardHtmlGenerator";
 import { QuarantineService } from "./QuarantineService";
+import { PrQualityGateService } from "./PrQualityGateService";
 import { isSafePath } from "./utils/PathUtils";
 import * as fs from "fs";
 
@@ -186,7 +187,7 @@ async function run() {
     quarantineFailOnExpired: env.quarantineFailOnExpired,
   };
 
-  await app.run(runOptions, args.junitFile);
+  const runSummary = await app.run(runOptions, args.junitFile);
 
   logger.logAudit({
     eventType: "EXECUTION_COMPLETED",
@@ -232,6 +233,64 @@ async function run() {
     } else {
       logger.warn(`⚠️ Unsafe dashboard output path skipped: ${outPath}`);
     }
+  }
+
+  const prGateActive = args.prGate ?? env.prGateEnabled;
+  if (prGateActive) {
+    const prGateService = new PrQualityGateService(
+      clients.testApi,
+      clients.gitApi,
+      logger,
+      quarantineService
+    );
+    const summaries =
+      runSummary?.results ||
+      (await parser.parse(args.junitFile)).map((tc) => ({
+        testName: tc.name,
+        outcome: tc.outcome,
+        durationMs: tc.durationMs,
+        errorMessage: tc.errorMessage,
+      }));
+
+    const gateResult = await prGateService.evaluateAndReport(summaries, {
+      project: env.project,
+      repositoryId: args.prRepo || env.prRepositoryId,
+      pullRequestId: args.prId || env.prId,
+      targetBranch: args.prTargetBranch || env.prTargetBranch,
+      sourceBranch: env.prSourceBranch,
+      commitSha: env.commitSha,
+      buildId: env.buildId,
+      buildNumber: env.buildNumber,
+      buildUri: env.buildUri,
+      runId: runSummary?.runId,
+      runUrl: runSummary?.runUrl,
+      publishStatusCheck: args.prStatusCheck ?? env.prStatusCheck,
+      failOnNewRegressions: true,
+    });
+
+    logger.logAudit({
+      eventType: "PR_GATE_EVALUATED",
+      level: gateResult.passed ? "INFO" : "WARN",
+      action: `PR Quality Gate ${gateResult.passed ? "PASSED" : "FAILED"}`,
+      actor: env.triggerActor,
+      buildId: env.buildId,
+      commitSha: env.commitSha,
+      status: gateResult.passed ? "SUCCESS" : "FAILURE",
+      details: {
+        baselineRunId: gateResult.baselineRunId,
+        newRegressions: gateResult.newRegressions.length,
+        knownBaselineFailures: gateResult.knownBaselineFailures.length,
+        quarantinedFailures: gateResult.quarantinedFailures.length,
+        commentThreadId: gateResult.commentThreadId,
+      },
+    });
+
+    if (!gateResult.passed) {
+      throw new Error(
+        `❌ PR Quality Gate FAILED: ${gateResult.newRegressions.length} new regression(s) detected.`
+      );
+    }
+    logger.log("✅ PR Quality Gate PASSED: 0 new regressions detected.");
   }
 }
 

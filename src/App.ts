@@ -7,9 +7,16 @@ import { RunOptions } from "./interfaces/RunOptions";
 import { IQuarantineService } from "./interfaces/IQuarantineService";
 import { AuditEvidenceService } from "./AuditEvidenceService";
 import { ExecutionProvenance, ArtifactAuditRecord } from "./interfaces/IAuditManifest";
+import { TestOutcomeSummary } from "./interfaces/IPrQualityGateService";
 import * as fs from "fs";
 import * as path from "path";
 import { isSafePath } from "./utils/PathUtils";
+
+export interface AppRunSummary {
+    runId?: number;
+    runUrl?: string;
+    results: TestOutcomeSummary[];
+}
 
 // Regex to extract Test Case ID from test name (e.g. "UserLogin_TC1056")
 const TC_ID_REGEX = /TC(\d+)/i;
@@ -29,7 +36,7 @@ export class App {
         this.auditEvidenceService = auditEvidenceService || new AuditEvidenceService(logger);
     }
 
-    async run(options: RunOptions, junitFile: string) {
+    async run(options: RunOptions, junitFile: string): Promise<AppRunSummary | undefined> {
         const { planName, suiteName, buildId, buildNumber, attachResults, createFailureTasks, autoCloseOnPass } = options;
 
         // Check for expired quarantines if configured
@@ -123,6 +130,7 @@ export class App {
         }
 
         const resultsToPublish: TestCaseResultWithAttachments[] = [];
+        const outcomeSummaries: TestOutcomeSummary[] = [];
         const testCaseIdsToLink: string[] = [];
         const passedTestCaseIds: string[] = [];
         const failedForTask: {
@@ -144,6 +152,15 @@ export class App {
             if (this.quarantineService) {
                 this.quarantineService.recordExecutionOutcome(resolvedTestCase.id, tc.name, tc.outcome);
             }
+
+            outcomeSummaries.push({
+                testName: tc.name,
+                testCaseId: String(resolvedTestCase.id),
+                outcome: tc.outcome,
+                durationMs: tc.durationMs,
+                errorMessage: tc.errorMessage,
+                isQuarantined,
+            });
 
             const resultModel: TestCaseResultWithAttachments = {
                 testCaseTitle: tc.name,
@@ -303,5 +320,11 @@ export class App {
                 await this.failureTaskService.resolveTaskForSuccess(tcId, buildNumber, provenance);
             }
         }
+
+        return {
+            runId: runInfo.runId,
+            runUrl: runInfo.runUrl,
+            results: outcomeSummaries,
+        };
     }
 }

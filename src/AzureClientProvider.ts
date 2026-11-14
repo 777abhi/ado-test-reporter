@@ -39,7 +39,11 @@ export class AzureClientProvider implements IAzureClientProvider {
         const testApi = await connection.getTestApi();
         const testPlanApi = await connection.getTestPlanApi();
         const workItemApi = await connection.getWorkItemTrackingApi();
+        const gitApi =
+            typeof (connection as any).getGitApi === "function"
+                ? await connection.getGitApi()
+                : undefined;
 
-        return { testApi, testPlanApi, workItemApi };
+        return { testApi, testPlanApi, workItemApi, gitApi };
     }
 }
