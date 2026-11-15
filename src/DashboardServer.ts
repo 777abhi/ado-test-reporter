@@ -10,6 +10,7 @@ import { DashboardHtmlGenerator } from "./DashboardHtmlGenerator";
 import { SecretRedactor } from "./utils/SecretRedactor";
 import { IQuarantineService } from "./interfaces/IQuarantineService";
 import { QuarantineService } from "./QuarantineService";
+import { RunDiffService } from "./RunDiffService";
 
 export class DashboardServer {
   private server?: http.Server;
@@ -229,6 +230,40 @@ export class DashboardServer {
               "Content-Type": "application/json; charset=utf-8",
             });
             res.end(JSON.stringify({ success: ok }));
+            return;
+          }
+
+          if (req.method === "GET" && pathname === "/api/diff") {
+            const cacheData = this.cacheRepo.load();
+            const runs = cacheData.runs || [];
+            const candidateIdParam = reqUrl.searchParams.get("candidateRunId");
+            const baselineIdParam = reqUrl.searchParams.get("baselineRunId");
+
+            const defaults = RunDiffService.selectDefaultRuns(runs);
+            const candidateRun = candidateIdParam
+              ? runs.find((r) => r.runId === Number(candidateIdParam))
+              : defaults.candidateRun;
+            const baselineRun = baselineIdParam
+              ? runs.find((r) => r.runId === Number(baselineIdParam))
+              : defaults.baselineRun;
+
+            if (!candidateRun) {
+              res.writeHead(404, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Candidate run not found" }));
+              return;
+            }
+
+            const quarantined = this.quarantineService.listActiveQuarantined();
+            const diffReport = RunDiffService.diffRuns(
+              candidateRun,
+              baselineRun,
+              quarantined
+            );
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store",
+            });
+            res.end(JSON.stringify(diffReport));
             return;
           }
 

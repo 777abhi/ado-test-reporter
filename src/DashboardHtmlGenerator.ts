@@ -894,6 +894,9 @@ export class DashboardHtmlGenerator {
         <button class="tab-btn" id="tabBtn-quarantine" onclick="switchTab('quarantine')">
           🛡️ Stability &amp; Quarantine <span class="tab-count" id="count-quarantine">0</span>
         </button>
+        <button class="tab-btn" id="tabBtn-gate" onclick="switchTab('gate')">
+          🚦 PR Gate &amp; Run Diff <span class="tab-count" id="count-gate">0</span>
+        </button>
       </div>
       <div style="font-size: 12px; color: var(--text-secondary);">
         💡 Click any Test Run row to expand individual test case outcomes, error traces, and ADO links.
@@ -912,6 +915,8 @@ export class DashboardHtmlGenerator {
     let activeTab = 'runs';
     let trendMetric = 'tests';
     let expandedRunIds = new Set();
+    let selectedCandidateRunId = null;
+    let selectedBaselineRunId = null;
 
     function escapeHtml(str) {
       if (str === null || str === undefined) return '';
@@ -1418,6 +1423,18 @@ export class DashboardHtmlGenerator {
       const qEl = document.getElementById('count-quarantine');
       if (qEl) qEl.textContent = qCount;
 
+      const gateEl = document.getElementById('count-gate');
+      if (gateEl) {
+        const defaults = selectDefaultDiffRuns(currentReport.runs || allRuns || []);
+        if (defaults.candidateRun) {
+          const activeQ = (currentReport.quarantine && currentReport.quarantine.activeQuarantined) ? currentReport.quarantine.activeQuarantined : [];
+          const diffPreview = computeRunDiff(defaults.candidateRun, defaults.baselineRun, activeQ);
+          gateEl.textContent = diffPreview.newRegressions.length;
+        } else {
+          gateEl.textContent = 0;
+        }
+      }
+
       renderActiveTab();
     }
 
@@ -1732,7 +1749,7 @@ export class DashboardHtmlGenerator {
 
     function switchTab(tab) {
       activeTab = tab;
-      ['runs', 'triage', 'performance', 'quarantine'].forEach(t => {
+      ['runs', 'triage', 'performance', 'quarantine', 'gate'].forEach(t => {
         const btn = document.getElementById('tabBtn-' + t);
         if (btn) btn.classList.toggle('active', t === tab);
       });
@@ -1765,6 +1782,8 @@ export class DashboardHtmlGenerator {
         renderTriageTab(panel, query);
       } else if (activeTab === 'quarantine') {
         renderQuarantineTab(panel, query);
+      } else if (activeTab === 'gate') {
+        renderGateDiffTab(panel, query);
       } else {
         renderPerformanceTab(panel, query);
       }
@@ -2399,6 +2418,433 @@ export class DashboardHtmlGenerator {
               <tbody>
                 \${leaderboardRows || '<tr><td colspan="8" class="empty-state">No execution reliability data available.</td></tr>'}
               </tbody>
+            </table>
+          </div>
+        </div>
+      \`;
+    }
+
+    function normalizeDiffTestName(name) {
+      return (name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^tc\\d+[_\\s:-]*/i, '')
+        .replace(/[_\\s-]+/g, ' ');
+    }
+
+    function selectDefaultDiffRuns(runs) {
+      if (!runs || runs.length === 0) return { candidateRun: null, baselineRun: null };
+      const sorted = [...runs].sort((a, b) =>
+        new Date(b.completedDate || b.startedDate).getTime() - new Date(a.completedDate || a.startedDate).getTime()
+      );
+      const candidateRun = sorted[0];
+      if (sorted.length === 1) return { candidateRun, baselineRun: null };
+      const remaining = sorted.slice(1);
+      const samePlan = candidateRun.planName
+        ? remaining.find(r => r.planName === candidateRun.planName)
+        : null;
+      return { candidateRun, baselineRun: samePlan || remaining[0] };
+    }
+
+    function isDiffTestQuarantined(res, quarantinedList) {
+      if (!quarantinedList || quarantinedList.length === 0) return false;
+      const resId = res.testCaseId ? String(res.testCaseId).trim() : '';
+      const normTitle = normalizeDiffTestName(res.testCaseTitle);
+      const normAuto = res.automatedTestName ? normalizeDiffTestName(res.automatedTestName) : '';
+      return quarantinedList.some(q => {
+        if (q.status && q.status !== 'active') return false;
+        if (resId && q.testCaseId && String(q.testCaseId).trim() === resId) return true;
+        const qTitle = normalizeDiffTestName(q.testCaseTitle);
+        if (qTitle && (qTitle === normTitle || (normAuto && qTitle === normAuto))) return true;
+        if (q.testKey && resId && q.testKey.toLowerCase() === 'tc:' + resId.toLowerCase()) return true;
+        return false;
+      });
+    }
+
+    function computeRunDiff(candidateRun, baselineRun, quarantinedList) {
+      const baselineFailedIds = new Set();
+      const baselineFailedNames = new Set();
+      const baselineFailedMap = new Map();
+
+      if (baselineRun) {
+        for (const res of baselineRun.results || []) {
+          if (res.outcome === 'Failed') {
+            if (res.testCaseId) {
+              const idKey = String(res.testCaseId).trim();
+              baselineFailedIds.add(idKey);
+              baselineFailedMap.set('id:' + idKey, res);
+            }
+            const normTitle = normalizeDiffTestName(res.testCaseTitle);
+            if (normTitle) {
+              baselineFailedNames.add(normTitle);
+              baselineFailedMap.set('name:' + normTitle, res);
+            }
+            if (res.automatedTestName) {
+              const normAuto = normalizeDiffTestName(res.automatedTestName);
+              if (normAuto) {
+                baselineFailedNames.add(normAuto);
+                baselineFailedMap.set('name:' + normAuto, res);
+              }
+            }
+          }
+        }
+      }
+
+      const newRegressions = [];
+      const knownBaselineFailures = [];
+      const quarantinedFailures = [];
+      const fixedTests = [];
+
+      for (const res of candidateRun.results || []) {
+        const idKey = res.testCaseId ? String(res.testCaseId).trim() : '';
+        const normTitle = normalizeDiffTestName(res.testCaseTitle);
+        const normAuto = res.automatedTestName ? normalizeDiffTestName(res.automatedTestName) : '';
+
+        const matchedBaseline =
+          (idKey ? baselineFailedMap.get('id:' + idKey) : null) ||
+          (normTitle ? baselineFailedMap.get('name:' + normTitle) : null) ||
+          (normAuto ? baselineFailedMap.get('name:' + normAuto) : null);
+
+        const inBaselineFailed =
+          (idKey && baselineFailedIds.has(idKey)) ||
+          (normTitle && baselineFailedNames.has(normTitle)) ||
+          (normAuto && baselineFailedNames.has(normAuto));
+
+        if (res.outcome === 'Passed' && inBaselineFailed) {
+          fixedTests.push({
+            testCaseId: res.testCaseId,
+            testCaseTitle: res.testCaseTitle,
+            automatedTestName: res.automatedTestName,
+            durationMs: res.durationMs,
+            baselineDurationMs: matchedBaseline ? matchedBaseline.durationMs : undefined,
+            testCaseUrl: res.testCaseUrl,
+            linkedDefect: res.linkedDefect || (matchedBaseline ? matchedBaseline.linkedDefect : undefined),
+          });
+          continue;
+        }
+
+        if (res.outcome !== 'Failed') continue;
+
+        const item = {
+          testCaseId: res.testCaseId,
+          testCaseTitle: res.testCaseTitle,
+          automatedTestName: res.automatedTestName,
+          errorMessage: res.errorMessage,
+          durationMs: res.durationMs,
+          baselineDurationMs: matchedBaseline ? matchedBaseline.durationMs : undefined,
+          testCaseUrl: res.testCaseUrl,
+          linkedDefect: res.linkedDefect,
+        };
+
+        if (isDiffTestQuarantined(res, quarantinedList)) {
+          quarantinedFailures.push(item);
+        } else if (inBaselineFailed) {
+          knownBaselineFailures.push(item);
+        } else {
+          newRegressions.push(item);
+        }
+      }
+
+      const passed = newRegressions.length === 0;
+      const passRateDeltaPct = baselineRun ? Number((candidateRun.passRate - baselineRun.passRate).toFixed(1)) : 0;
+      const durationDeltaMs = baselineRun ? candidateRun.durationMs - baselineRun.durationMs : 0;
+
+      return {
+        passed,
+        candidateRun,
+        baselineRun,
+        deltas: { passRateDeltaPct, durationDeltaMs },
+        newRegressions,
+        knownBaselineFailures,
+        quarantinedFailures,
+        fixedTests,
+      };
+    }
+
+    function buildPrGateMarkdownClient(diff) {
+      const statusBadge = diff.passed
+        ? '✅ **PASSED** — No new test regressions introduced'
+        : '❌ **FAILED** — ' + diff.newRegressions.length + ' new test regression(s) detected';
+      const baselineInfo = diff.baselineRun
+        ? 'Run #' + diff.baselineRun.runId + ' (\`' + diff.baselineRun.name + '\`)'
+        : '_None (no baseline run selected)_';
+
+      const lines = [
+        '## 🚦 ADO Test Reporter — PR Quality Gate',
+        '',
+        '**Gate Verdict:** ' + statusBadge,
+        '**Candidate Run:** Run #' + diff.candidateRun.runId + ' (\`' + diff.candidateRun.name + '\`) — **' + diff.candidateRun.passRate + '%** pass rate',
+        '**Baseline Run:** ' + baselineInfo,
+        '',
+        '| Metric | Count |',
+        '| :--- | :---: |',
+        '| Total Tests | ' + diff.candidateRun.totalTests + ' |',
+        '| Passed | ' + diff.candidateRun.passedTests + ' |',
+        '| 🚨 New Regressions (Blocking) | **' + diff.newRegressions.length + '** |',
+        '| ✅ Fixed / Recovered | ' + diff.fixedTests.length + ' |',
+        '| 📌 Known Baseline Failures (Non-blocking) | ' + diff.knownBaselineFailures.length + ' |',
+        '| 🛡️ Quarantined Failures (Suppressed) | ' + diff.quarantinedFailures.length + ' |',
+        '',
+      ];
+
+      if (diff.newRegressions.length > 0) {
+        lines.push('### 🚨 New Regressions (Must Fix)');
+        for (const f of diff.newRegressions.slice(0, 20)) {
+          const tc = f.testCaseId ? ' \`[TC' + f.testCaseId + ']\`' : '';
+          const err = f.errorMessage ? ' — \`' + f.errorMessage.replace(/[\\r\\n]+/g, ' ').slice(0, 140) + '\`' : '';
+          lines.push('- **' + f.testCaseTitle + '**' + tc + err);
+        }
+        lines.push('');
+      }
+      if (diff.fixedTests.length > 0) {
+        lines.push('### ✅ Fixed / Recovered Tests');
+        for (const f of diff.fixedTests.slice(0, 15)) {
+          const tc = f.testCaseId ? ' \`[TC' + f.testCaseId + ']\`' : '';
+          lines.push('- **' + f.testCaseTitle + '**' + tc);
+        }
+        lines.push('');
+      }
+      if (diff.knownBaselineFailures.length > 0) {
+        lines.push('### 📌 Known Baseline Failures (Pre-existing)');
+        for (const f of diff.knownBaselineFailures.slice(0, 15)) {
+          const tc = f.testCaseId ? ' \`[TC' + f.testCaseId + ']\`' : '';
+          lines.push('- ' + f.testCaseTitle + tc);
+        }
+        lines.push('');
+      }
+      if (diff.quarantinedFailures.length > 0) {
+        lines.push('### 🛡️ Quarantined Failures (Suppressed)');
+        for (const f of diff.quarantinedFailures.slice(0, 15)) {
+          const tc = f.testCaseId ? ' \`[TC' + f.testCaseId + ']\`' : '';
+          lines.push('- ' + f.testCaseTitle + tc);
+        }
+        lines.push('');
+      }
+      return lines.join('\\n');
+    }
+
+    async function copyPrGateMarkdown() {
+      const runsPool = (currentReport.runs && currentReport.runs.length > 0) ? currentReport.runs : allRuns;
+      const defaults = selectDefaultDiffRuns(runsPool);
+      const cand = runsPool.find(r => r.runId === selectedCandidateRunId) || defaults.candidateRun;
+      const base = selectedBaselineRunId === 'none'
+        ? null
+        : (runsPool.find(r => r.runId === selectedBaselineRunId) || defaults.baselineRun);
+      if (!cand) return;
+      const activeQ = (currentReport.quarantine && currentReport.quarantine.activeQuarantined) ? currentReport.quarantine.activeQuarantined : [];
+      const diff = computeRunDiff(cand, base, activeQ);
+      const md = buildPrGateMarkdownClient(diff);
+      try {
+        await navigator.clipboard.writeText(md);
+        showToast('📋 Copied PR Quality Gate Markdown to clipboard!');
+      } catch (e) {
+        showToast('ℹ️ PR Gate Markdown generated (clipboard permission unavailable).');
+      }
+    }
+
+    function onDiffRunSelectionChange() {
+      const candEl = document.getElementById('diffCandidateSelect');
+      const baseEl = document.getElementById('diffBaselineSelect');
+      if (candEl) selectedCandidateRunId = Number(candEl.value);
+      if (baseEl) selectedBaselineRunId = baseEl.value === 'none' ? 'none' : Number(baseEl.value);
+      renderActiveTab();
+    }
+
+    function swapDiffRuns() {
+      if (!selectedBaselineRunId || selectedBaselineRunId === 'none') return;
+      const prevCand = selectedCandidateRunId;
+      selectedCandidateRunId = selectedBaselineRunId;
+      selectedBaselineRunId = prevCand;
+      renderActiveTab();
+    }
+
+    function resetDiffRuns() {
+      selectedCandidateRunId = null;
+      selectedBaselineRunId = null;
+      renderActiveTab();
+    }
+
+    function renderDiffBucketRows(items, query, emptyMsg, badgeHtml) {
+      const filtered = items.filter(item => {
+        if (!query) return true;
+        return (item.testCaseTitle || '').toLowerCase().includes(query) ||
+          (item.testCaseId && String(item.testCaseId).toLowerCase().includes(query)) ||
+          (item.errorMessage || '').toLowerCase().includes(query);
+      });
+      if (filtered.length === 0) {
+        return '<tr><td colspan="5" class="empty-state">' + escapeHtml(emptyMsg) + '</td></tr>';
+      }
+      return filtered.map(item => {
+        const tcCell = item.testCaseId
+          ? \`<a class="mono" href="\${escapeHtml(item.testCaseUrl || '#')}" target="_blank" rel="noopener noreferrer">TC\${escapeHtml(item.testCaseId)} ↗</a>\`
+          : '<span class="mono" style="color: var(--text-muted);">Unlinked</span>';
+        const defectCell = item.linkedDefect
+          ? \`<a class="badge badge-direct" href="\${escapeHtml(item.linkedDefect.url)}" target="_blank" rel="noopener noreferrer">#\${item.linkedDefect.workItemId}</a>\`
+          : '<span style="color: var(--text-muted);">—</span>';
+        const errSnippet = item.errorMessage
+          ? \`<div style="font-size: 11.5px; color: #fda4af; font-family: var(--font-mono); margin-top: 3px; word-break: break-word;">\${escapeHtml(item.errorMessage.slice(0, 180))}</div>\`
+          : '';
+        return \`
+          <tr>
+            <td>\${badgeHtml}</td>
+            <td>\${tcCell}</td>
+            <td>
+              <div style="font-weight: 600;">\${escapeHtml(item.testCaseTitle)}</div>
+              \${errSnippet}
+            </td>
+            <td class="mono">\${formatDuration(item.durationMs)}</td>
+            <td>\${defectCell}</td>
+          </tr>
+        \`;
+      }).join('');
+    }
+
+    function renderGateDiffTab(panel, query) {
+      const runsPool = (currentReport.runs && currentReport.runs.length > 0) ? currentReport.runs : allRuns;
+      if (!runsPool || runsPool.length === 0) {
+        panel.innerHTML = '<div class="empty-state">No test runs available to compare. Sync runs or load demo data first.</div>';
+        return;
+      }
+
+      const sortedRuns = [...runsPool].sort((a, b) =>
+        new Date(b.completedDate || b.startedDate).getTime() - new Date(a.completedDate || a.startedDate).getTime()
+      );
+      const defaults = selectDefaultDiffRuns(sortedRuns);
+      const cand = sortedRuns.find(r => r.runId === selectedCandidateRunId) || defaults.candidateRun;
+      const base = selectedBaselineRunId === 'none'
+        ? null
+        : (sortedRuns.find(r => r.runId === selectedBaselineRunId) || defaults.baselineRun);
+
+      if (cand) selectedCandidateRunId = cand.runId;
+      if (selectedBaselineRunId === null && base) selectedBaselineRunId = base.runId;
+
+      const activeQ = (currentReport.quarantine && currentReport.quarantine.activeQuarantined) ? currentReport.quarantine.activeQuarantined : [];
+      const diff = computeRunDiff(cand, base, activeQ);
+
+      const gateEl = document.getElementById('count-gate');
+      if (gateEl) gateEl.textContent = diff.newRegressions.length;
+
+      const candOptions = sortedRuns.map(r =>
+        \`<option value="\${r.runId}" \${cand && r.runId === cand.runId ? 'selected' : ''}>#\${r.runId} — \${escapeHtml(r.name)} (\${r.passRate}%, \${formatDateShort(r.completedDate)})</option>\`
+      ).join('');
+      const baseOptions = \`<option value="none" \${!base ? 'selected' : ''}>No Baseline (Treat all non-quarantined failures as new)</option>\` +
+        sortedRuns.map(r =>
+          \`<option value="\${r.runId}" \${base && r.runId === base.runId ? 'selected' : ''}>#\${r.runId} — \${escapeHtml(r.name)} (\${r.passRate}%, \${formatDateShort(r.completedDate)})</option>\`
+        ).join('');
+
+      const deltaSign = diff.deltas.passRateDeltaPct >= 0 ? '+' : '';
+      const deltaColor = diff.deltas.passRateDeltaPct >= 0 ? '#34d399' : '#fb7185';
+      const durDeltaMs = diff.deltas.durationDeltaMs;
+      const durSign = durDeltaMs > 0 ? '+' : durDeltaMs < 0 ? '-' : '';
+      const durColor = durDeltaMs <= 0 ? '#34d399' : '#fde047';
+
+      const verdictBg = diff.passed ? 'rgba(16, 185, 129, 0.12)' : 'rgba(244, 63, 94, 0.14)';
+      const verdictBorder = diff.passed ? 'rgba(16, 185, 129, 0.45)' : 'rgba(244, 63, 94, 0.5)';
+      const verdictTitle = diff.passed
+        ? '✅ PR QUALITY GATE: PASSED'
+        : '❌ PR QUALITY GATE: FAILED — ' + diff.newRegressions.length + ' New Regression(s)';
+      const verdictSub = diff.passed
+        ? 'Zero new regressions introduced compared to baseline. Known baseline and quarantined failures are non-blocking.'
+        : 'New test failure(s) detected that were not present in the baseline run and are not quarantined.';
+
+      const regRows = renderDiffBucketRows(
+        diff.newRegressions,
+        query,
+        '🎉 Zero new regressions! All failures are either known baseline or quarantined.',
+        '<span class="badge badge-fail">NEW REGRESSION</span>'
+      );
+      const fixedRows = renderDiffBucketRows(
+        diff.fixedTests,
+        query,
+        'No fixed / recovered tests between these two runs.',
+        '<span class="badge badge-pass">FIXED</span>'
+      );
+      const knownRows = renderDiffBucketRows(
+        diff.knownBaselineFailures,
+        query,
+        'No known baseline failures in candidate run.',
+        '<span class="badge badge-flaky">KNOWN BASELINE</span>'
+      );
+      const qRows = renderDiffBucketRows(
+        diff.quarantinedFailures,
+        query,
+        'No quarantined failures suppressed in candidate run.',
+        '<span class="badge badge-pipeline">QUARANTINED</span>'
+      );
+
+      panel.innerHTML = \`
+        <div class="panel-body">
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; background: var(--bg-secondary); padding: 14px; border-radius: 10px; border: 1px solid var(--border-subtle);">
+            <div style="flex: 1 1 280px;">
+              <label class="filter-label" style="display: block; margin-bottom: 4px;">Candidate Run (PR / Head)</label>
+              <select id="diffCandidateSelect" class="filter-input" style="width: 100%;" onchange="onDiffRunSelectionChange()">\${candOptions}</select>
+            </div>
+            <div style="flex: 1 1 280px;">
+              <label class="filter-label" style="display: block; margin-bottom: 4px;">Baseline Run (Target / Main)</label>
+              <select id="diffBaselineSelect" class="filter-input" style="width: 100%;" onchange="onDiffRunSelectionChange()">\${baseOptions}</select>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="btn" onclick="swapDiffRuns()" title="Swap Candidate and Baseline">⇄ Swap</button>
+              <button class="btn" onclick="resetDiffRuns()" title="Reset to latest vs previous run">↺ Default</button>
+              <button class="btn btn-primary" onclick="copyPrGateMarkdown()">📋 Copy PR Comment Markdown</button>
+            </div>
+          </div>
+
+          <div style="background: \${verdictBg}; border: 1px solid \${verdictBorder}; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+            <div>
+              <div style="font-size: 17px; font-weight: 800; color: \${diff.passed ? '#34d399' : '#fb7185'};">\${verdictTitle}</div>
+              <div style="font-size: 12.5px; color: var(--text-secondary); margin-top: 3px;">\${verdictSub}</div>
+            </div>
+            <div style="display: flex; gap: 18px; flex-wrap: wrap;">
+              <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Candidate Pass Rate</div>
+                <div style="font-size: 18px; font-weight: 700;">\${cand.passRate}% <span style="font-size: 12.5px; color: \${deltaColor};">(\${deltaSign}\${diff.deltas.passRateDeltaPct}%)</span></div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Duration Delta</div>
+                <div style="font-size: 18px; font-weight: 700; color: \${durColor};">\${durSign}\${formatDuration(Math.abs(durDeltaMs))}</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">New / Fixed / Known / Quarantined</div>
+                <div style="font-size: 16px; font-weight: 700; font-family: var(--font-mono);">
+                  <span style="color:#fb7185;">\${diff.newRegressions.length}</span> /
+                  <span style="color:#34d399;">\${diff.fixedTests.length}</span> /
+                  <span style="color:#fde047;">\${diff.knownBaselineFailures.length}</span> /
+                  <span style="color:#38bdf8;">\${diff.quarantinedFailures.length}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sub-section-title" style="margin-top: 0;">🚨 New Regressions — Blocking (\${diff.newRegressions.length})</div>
+          <div class="table-wrap" style="margin-bottom: 18px;">
+            <table>
+              <thead><tr><th>Status</th><th>Test Case</th><th>Test Title &amp; Error</th><th>Duration</th><th>Defect</th></tr></thead>
+              <tbody>\${regRows}</tbody>
+            </table>
+          </div>
+
+          <div class="sub-section-title">✅ Fixed / Recovered Tests (\${diff.fixedTests.length})</div>
+          <div class="table-wrap" style="margin-bottom: 18px;">
+            <table>
+              <thead><tr><th>Status</th><th>Test Case</th><th>Test Title</th><th>Duration</th><th>Defect</th></tr></thead>
+              <tbody>\${fixedRows}</tbody>
+            </table>
+          </div>
+
+          <div class="sub-section-title">📌 Known Baseline Failures — Non-Blocking (\${diff.knownBaselineFailures.length})</div>
+          <div class="table-wrap" style="margin-bottom: 18px;">
+            <table>
+              <thead><tr><th>Status</th><th>Test Case</th><th>Test Title &amp; Error</th><th>Duration</th><th>Defect</th></tr></thead>
+              <tbody>\${knownRows}</tbody>
+            </table>
+          </div>
+
+          <div class="sub-section-title">🛡️ Quarantined Failures — Suppressed (\${diff.quarantinedFailures.length})</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Status</th><th>Test Case</th><th>Test Title &amp; Error</th><th>Duration</th><th>Defect</th></tr></thead>
+              <tbody>\${qRows}</tbody>
             </table>
           </div>
         </div>
