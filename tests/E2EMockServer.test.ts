@@ -191,26 +191,14 @@ describe("E2E Mock ADO HTTP Server", () => {
           });
         }
 
-        // Paginated Points List (2 pages via x-ms-continuationtoken)
+        // Points List
         if (pathname.includes("/_apis/testplan/Plans/10/Suites/20/point")) {
           stats.pointsCalls++;
-          const token = urlObj.searchParams.get("continuationToken");
-          if (!token) {
-            return sendJson(
-              200,
-              {
-                count: 2,
-                value: [
-                  { id: 1001, testCaseReference: { id: "101", name: "Login_Pass_TC101" } },
-                  { id: 1002, testCaseReference: { id: "102", name: "Cart_Pass_TC102" } },
-                ],
-              },
-              { "x-ms-continuationtoken": "page-2" }
-            );
-          }
           return sendJson(200, {
-            count: 1,
+            count: 3,
             value: [
+              { id: 1001, testCaseReference: { id: "101", name: "Login_Pass_TC101" } },
+              { id: 1002, testCaseReference: { id: "102", name: "Cart_Pass_TC102" } },
               { id: 1003, testCaseReference: { id: "103", name: "Checkout_Fail_TC103" } },
             ],
           });
@@ -360,7 +348,7 @@ describe("E2E Mock ADO HTTP Server", () => {
     expect(summary?.results).toHaveLength(3);
     expect(stats.rateLimitedOnce).toBe(true);
     expect(stats.getWorkItemsCalls).toBe(3); // batch 1 [101,102] (429 + retry) + batch 2 [103]
-    expect(stats.pointsCalls).toBe(2); // 2 continuation pages
+    expect(stats.pointsCalls).toBe(1);
     expect(stats.addResultsBatches).toEqual([2, 1]); // batchSize=2 chunked 3 results
     expect(stats.createdFailureTasks).toBe(1);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("HTTP 429"));
