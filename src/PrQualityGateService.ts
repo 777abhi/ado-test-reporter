@@ -17,6 +17,7 @@ import {
     PrGateEvaluationResult,
     TestOutcomeSummary,
 } from "./interfaces/IPrQualityGateService";
+import { fetchAllSkipTop } from "./utils/AsyncUtils";
 
 export const PR_GATE_COMMENT_MARKER = "<!-- ado-test-reporter-pr-gate -->";
 
@@ -200,13 +201,17 @@ export class PrQualityGateService implements IPrQualityGateService {
                 `📌 Using baseline Test Run #${latestRun.id} ('${latestRun.name || "Unnamed"}') on '${targetBranch}'.`
             );
 
-            const failedResults: TestCaseResult[] = await this.testApi.getTestResults(
-                project,
-                latestRun.id,
-                undefined,
-                undefined,
-                1000,
-                [TestOutcome.Failed]
+            const failedResults: TestCaseResult[] = await fetchAllSkipTop(
+                (skip, top) =>
+                    this.testApi.getTestResults(
+                        project,
+                        latestRun.id!,
+                        undefined,
+                        skip,
+                        top,
+                        [TestOutcome.Failed]
+                    ),
+                1000
             );
 
             const failedTestCaseIds = new Set<string>();

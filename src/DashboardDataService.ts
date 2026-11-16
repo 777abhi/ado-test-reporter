@@ -2,6 +2,11 @@ import * as crypto from "crypto";
 import { ITestApi } from "azure-devops-node-api/TestApi";
 import { IWorkItemTrackingApi } from "azure-devops-node-api/WorkItemTrackingApi";
 import {
+  chunkArray,
+  fetchAllSkipTop,
+  MAX_WORK_ITEM_BATCH_SIZE,
+} from "./utils/AsyncUtils";
+import {
   DashboardCacheData,
   DashboardFilterOptions,
   DashboardInsightsReport,
@@ -203,8 +208,10 @@ export class DashboardDataService implements IDashboardService {
     for (const [runId, rawRun] of rawRunsMap.entries()) {
       try {
         const rawResults =
-          typeof this.testApi.getTestResults === "function"
-            ? await this.testApi.getTestResults(this.project, runId)
+          typeof this.testApi?.getTestResults === "function"
+            ? await fetchAllSkipTop((skip, top) =>
+                this.testApi!.getTestResults!(this.project, runId, undefined, skip, top)
+              )
             : [];
 
         const { executionSource, executionSubSource } =
@@ -383,19 +390,25 @@ export class DashboardDataService implements IDashboardService {
       const ids = (queryResult.workItems || [])
         .map((w) => w.id)
         .filter((id): id is number => typeof id === "number")
-        .slice(0, 100);
+        .slice(0, 1000);
 
       if (ids.length === 0 || typeof this.workItemApi.getWorkItems !== "function") {
         return map;
       }
 
-      const items = await this.workItemApi.getWorkItems(ids, [
-        "System.Id",
-        "System.Title",
-        "System.State",
-        "System.WorkItemType",
-        "System.Tags",
-      ]);
+      const items: any[] = [];
+      for (const idChunk of chunkArray(ids, MAX_WORK_ITEM_BATCH_SIZE)) {
+        const chunkItems = await this.workItemApi.getWorkItems(idChunk, [
+          "System.Id",
+          "System.Title",
+          "System.State",
+          "System.WorkItemType",
+          "System.Tags",
+        ]);
+        if (chunkItems && chunkItems.length > 0) {
+          items.push(...chunkItems);
+        }
+      }
 
       for (const item of items || []) {
         if (!item.id || !item.fields) continue;

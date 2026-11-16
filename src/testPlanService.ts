@@ -23,6 +23,7 @@ import {
   clampConcurrency,
   DEFAULT_BATCH_SIZE,
   DEFAULT_CONCURRENCY,
+  fetchAllPages,
   mapWithConcurrency,
 } from "./utils/AsyncUtils";
 
@@ -45,11 +46,13 @@ export class TestPlanService implements ITestPlanService {
       return this.createPlan(planName);
     }
 
-    const plans = await this.testPlanApi.getTestPlans(
-      this.project,
-      undefined,
-      undefined,
-      true
+    const plans = await fetchAllPages((continuationToken) =>
+      this.testPlanApi.getTestPlans(
+        this.project,
+        undefined,
+        continuationToken,
+        true
+      )
     );
     const existingPlan = plans.find((p) => p.name === planName);
 
@@ -83,9 +86,13 @@ export class TestPlanService implements ITestPlanService {
     planRootSuiteId: number | undefined,
     suiteName: string
   ): Promise<SuiteInfo> {
-    const suites = await this.testPlanApi.getTestSuitesForPlan(
-      this.project,
-      planId
+    const suites = await fetchAllPages((continuationToken) =>
+      this.testPlanApi.getTestSuitesForPlan(
+        this.project,
+        planId,
+        undefined,
+        continuationToken
+      )
     );
 
     if (this.autoCreateSuite) {
@@ -173,10 +180,15 @@ export class TestPlanService implements ITestPlanService {
     suiteId: number,
     results: TestCaseResult[]
   ): Promise<number[]> {
-    const points = await this.testPlanApi.getPointsList(
-      this.project,
-      planId,
-      suiteId
+    const points = await fetchAllPages((continuationToken) =>
+      this.testPlanApi.getPointsList(
+        this.project,
+        planId,
+        suiteId,
+        undefined,
+        undefined,
+        continuationToken
+      )
     );
     const pointByTestCaseId = new Map<string, { pointId: number; title?: string }>();
     points.forEach((pt) => {

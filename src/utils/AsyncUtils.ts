@@ -62,3 +62,80 @@ export async function mapWithConcurrency<T, R>(
   await Promise.all(workers);
   return results;
 }
+
+export interface PagedResult<T> extends Array<T> {
+  continuationToken?: string;
+}
+
+export const DEFAULT_MAX_PAGES = 100;
+
+/**
+ * Fetches all pages from an ADO `PagedList<T>` endpoint using continuationToken,
+ * with duplicate-token and maxPages guards against infinite loops.
+ */
+export async function fetchAllPages<T>(
+  fetchPage: (continuationToken?: string) => Promise<PagedResult<T> | T[] | undefined | null>,
+  maxPages: number = DEFAULT_MAX_PAGES
+): Promise<T[]> {
+  const all: T[] = [];
+  const seenTokens = new Set<string>();
+  let continuationToken: string | undefined = undefined;
+  let pageCount = 0;
+
+  while (pageCount < maxPages) {
+    const page = await fetchPage(continuationToken);
+    pageCount++;
+
+    if (!page || page.length === 0) {
+      const nextToken = (page as PagedResult<T> | undefined)?.continuationToken;
+      if (!nextToken || seenTokens.has(nextToken)) {
+        break;
+      }
+      seenTokens.add(nextToken);
+      continuationToken = nextToken;
+      continue;
+    }
+
+    all.push(...page);
+    const nextToken = (page as PagedResult<T>).continuationToken;
+    if (!nextToken || seenTokens.has(nextToken)) {
+      break;
+    }
+    seenTokens.add(nextToken);
+    continuationToken = nextToken;
+  }
+
+  return all;
+}
+
+/**
+ * Fetches all pages from a `skip`/`top` paginated endpoint, stopping when a page
+ * returns fewer than `pageSize` items or `maxPages` is reached.
+ */
+export async function fetchAllSkipTop<T>(
+  fetchPage: (skip: number, top: number) => Promise<T[] | undefined | null>,
+  pageSize: number = 1000,
+  maxPages: number = DEFAULT_MAX_PAGES
+): Promise<T[]> {
+  const all: T[] = [];
+  const effectivePageSize = Math.max(1, Math.floor(pageSize));
+  let skip = 0;
+  let pageCount = 0;
+
+  while (pageCount < maxPages) {
+    const page = await fetchPage(skip, effectivePageSize);
+    pageCount++;
+
+    if (!page || page.length === 0) {
+      break;
+    }
+
+    all.push(...page);
+    if (page.length < effectivePageSize) {
+      break;
+    }
+    skip += page.length;
+  }
+
+  return all;
+}
