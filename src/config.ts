@@ -4,6 +4,7 @@ import * as dotenv from "dotenv";
 import { AppEnv, AppArgs, IConfigService } from "./interfaces/IConfigService";
 import { SecretRedactor } from "./utils/SecretRedactor";
 import { clampBatchSize, clampConcurrency } from "./utils/AsyncUtils";
+import { clampMaxRetries, clampRetryBaseDelayMs } from "./utils/RetryUtils";
 
 export class ConfigService implements IConfigService {
   loadEnvironment(): AppEnv {
@@ -105,6 +106,12 @@ export class ConfigService implements IConfigService {
     const batchSize = clampBatchSize(
       process.env.ADO_BATCH_SIZE ? Number(process.env.ADO_BATCH_SIZE) : undefined
     );
+    const maxRetries = clampMaxRetries(
+      process.env.ADO_MAX_RETRIES ? Number(process.env.ADO_MAX_RETRIES) : undefined
+    );
+    const retryBaseDelayMs = clampRetryBaseDelayMs(
+      process.env.ADO_RETRY_BASE_DELAY_MS ? Number(process.env.ADO_RETRY_BASE_DELAY_MS) : undefined
+    );
 
     if (!token || !orgUrl || !project) {
       throw new Error(
@@ -148,6 +155,8 @@ export class ConfigService implements IConfigService {
       prStatusCheck,
       concurrency,
       batchSize,
+      maxRetries,
+      retryBaseDelayMs,
     };
   }
 

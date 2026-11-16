@@ -1,8 +1,8 @@
 
 import * as azureDevOps from "azure-devops-node-api";
 import { IAzureClientProvider, AzureClients } from "./interfaces/IAzureClientProvider";
-
 import { ILogger } from "./interfaces/ILogger";
+import { wrapClientWithRetry } from "./utils/RetryUtils";
 
 export class AzureClientProvider implements IAzureClientProvider {
     private isJwtBearerToken(token: string): boolean {
@@ -16,7 +16,8 @@ export class AzureClientProvider implements IAzureClientProvider {
         token: string,
         orgUrl: string,
         authType: "auto" | "bearer" | "pat" | string = "auto",
-        logger?: ILogger
+        logger?: ILogger,
+        retryOptions?: { maxRetries?: number; baseDelayMs?: number }
     ): Promise<AzureClients> {
         const isBearer =
             authType.toLowerCase() === "bearer" ||
@@ -34,15 +35,24 @@ export class AzureClientProvider implements IAzureClientProvider {
             ? azureDevOps.getBearerHandler(token)
             : azureDevOps.getPersonalAccessTokenHandler(token);
 
-        const connection = new azureDevOps.WebApi(orgUrl, authHandler);
+        const connection = new azureDevOps.WebApi(orgUrl, authHandler, {
+            allowRetries: false,
+        });
 
-        const testApi = await connection.getTestApi();
-        const testPlanApi = await connection.getTestPlanApi();
-        const workItemApi = await connection.getWorkItemTrackingApi();
-        const gitApi =
+        const retryCfg = {
+            maxRetries: retryOptions?.maxRetries,
+            baseDelayMs: retryOptions?.baseDelayMs,
+            logger,
+        };
+
+        const testApi = wrapClientWithRetry(await connection.getTestApi(), retryCfg);
+        const testPlanApi = wrapClientWithRetry(await connection.getTestPlanApi(), retryCfg);
+        const workItemApi = wrapClientWithRetry(await connection.getWorkItemTrackingApi(), retryCfg);
+        const rawGitApi =
             typeof (connection as any).getGitApi === "function"
                 ? await connection.getGitApi()
                 : undefined;
+        const gitApi = rawGitApi ? wrapClientWithRetry(rawGitApi, retryCfg) : undefined;
 
         return { testApi, testPlanApi, workItemApi, gitApi };
     }

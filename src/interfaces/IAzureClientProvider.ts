@@ -18,6 +18,7 @@ export interface IAzureClientProvider {
         token: string,
         orgUrl: string,
         authType?: "auto" | "bearer" | "pat" | string,
-        logger?: ILogger
+        logger?: ILogger,
+        retryOptions?: { maxRetries?: number; baseDelayMs?: number }
     ): Promise<AzureClients>;
 }

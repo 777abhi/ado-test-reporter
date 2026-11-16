@@ -149,7 +149,11 @@ async function run() {
     env.token,
     env.orgUrl,
     env.authType,
-    logger
+    logger,
+    {
+      maxRetries: env.maxRetries,
+      baseDelayMs: env.retryBaseDelayMs,
+    }
   );
   const parser = new JUnitParser();
 

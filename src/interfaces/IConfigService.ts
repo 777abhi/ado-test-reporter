@@ -32,6 +32,8 @@ export type AppEnv = {
     prStatusCheck: boolean;
     concurrency: number;
     batchSize: number;
+    maxRetries: number;
+    retryBaseDelayMs: number;
 };
 
 export type AppArgs = {
