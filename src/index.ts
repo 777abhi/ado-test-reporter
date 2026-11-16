@@ -110,6 +110,16 @@ async function run() {
         demandOption: false,
         describe: "Publish an Azure Repos PR Status Check in addition to the PR comment",
       },
+      "concurrency": {
+        type: "number",
+        demandOption: false,
+        describe: "Maximum concurrent Azure DevOps API requests (1-20, default: 5)",
+      },
+      "batch-size": {
+        type: "number",
+        demandOption: false,
+        describe: "Batch size for chunked ADO API calls (1-1000, default: 200)",
+      },
     })
     .parseSync();
 
@@ -210,6 +220,8 @@ async function run() {
     auditEvidenceOutput: args.auditEvidenceOutput,
     provenance: provenance,
     quarantineFailOnExpired: env.quarantineFailOnExpired,
+    concurrency: args.concurrency ?? env.concurrency,
+    batchSize: args.batchSize ?? env.batchSize,
   };
 
   const runSummary = await app.run(runOptions, args.junitFile);

@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as dotenv from "dotenv";
 import { AppEnv, AppArgs, IConfigService } from "./interfaces/IConfigService";
 import { SecretRedactor } from "./utils/SecretRedactor";
+import { clampBatchSize, clampConcurrency } from "./utils/AsyncUtils";
 
 export class ConfigService implements IConfigService {
   loadEnvironment(): AppEnv {
@@ -98,6 +99,12 @@ export class ConfigService implements IConfigService {
     const prSourceBranch =
       process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH || branch;
     const prStatusCheck = this.parseBoolean(process.env.ADO_PR_STATUS_CHECK, false);
+    const concurrency = clampConcurrency(
+      process.env.ADO_CONCURRENCY ? Number(process.env.ADO_CONCURRENCY) : undefined
+    );
+    const batchSize = clampBatchSize(
+      process.env.ADO_BATCH_SIZE ? Number(process.env.ADO_BATCH_SIZE) : undefined
+    );
 
     if (!token || !orgUrl || !project) {
       throw new Error(
@@ -139,6 +146,8 @@ export class ConfigService implements IConfigService {
       prTargetBranch,
       prSourceBranch,
       prStatusCheck,
+      concurrency,
+      batchSize,
     };
   }
 
@@ -159,6 +168,10 @@ export class ConfigService implements IConfigService {
     const prTargetBranch = argv["pr-target-branch"];
     const prStatusCheck =
       argv["pr-status-check"] !== undefined ? !!argv["pr-status-check"] : undefined;
+    const concurrency =
+      argv["concurrency"] !== undefined ? clampConcurrency(Number(argv["concurrency"])) : undefined;
+    const batchSize =
+      argv["batch-size"] !== undefined ? clampBatchSize(Number(argv["batch-size"])) : undefined;
     return {
       junitFile,
       planName,
@@ -175,6 +188,8 @@ export class ConfigService implements IConfigService {
       prRepo,
       prTargetBranch,
       prStatusCheck,
+      concurrency,
+      batchSize,
     };
   }
 

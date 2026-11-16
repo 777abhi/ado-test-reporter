@@ -17,5 +17,7 @@ export interface RunOptions {
     auditEvidenceOutput?: string;
     provenance?: ExecutionProvenance;
     quarantineFailOnExpired?: boolean;
+    concurrency?: number;
+    batchSize?: number;
 }
 

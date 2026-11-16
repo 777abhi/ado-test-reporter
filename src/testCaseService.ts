@@ -3,16 +3,18 @@ import {
   JsonPatchOperation,
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces";
-import { WorkItemExpand, FieldType } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
+import { WorkItemExpand, FieldType, WorkItemErrorPolicy } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces";
 import { ITestCaseService, TestCaseInfo } from "./interfaces/ITestCaseService";
 import { ILogger } from "./interfaces/ILogger";
 import { escapeWiqlString } from "./utils/WiqlUtils";
 import { sanitizeForCsv } from "./utils/CsvUtils";
+import { chunkArray, clampBatchSize, MAX_WORK_ITEM_BATCH_SIZE } from "./utils/AsyncUtils";
 import * as crypto from 'crypto';
 
 export class TestCaseService implements ITestCaseService {
   private byId = new Map<number, TestCaseInfo>();
   private byName = new Map<string, TestCaseInfo>();
+  private inFlightByName = new Map<string, Promise<TestCaseInfo>>();
 
   constructor(
     private workItemApi: IWorkItemTrackingApi,
@@ -22,7 +24,62 @@ export class TestCaseService implements ITestCaseService {
     private logger: ILogger
   ) { }
 
+  async prefetchByIds(ids: number[], batchSize: number = MAX_WORK_ITEM_BATCH_SIZE): Promise<void> {
+    const uniqueMissingIds = Array.from(
+      new Set(ids.filter((id) => Number.isInteger(id) && id > 0 && !this.byId.has(id)))
+    );
+    if (uniqueMissingIds.length === 0) return;
+
+    if (typeof (this.workItemApi as any).getWorkItems !== "function") {
+      return;
+    }
+
+    const effectiveBatchSize = clampBatchSize(batchSize, MAX_WORK_ITEM_BATCH_SIZE);
+    const chunks = chunkArray(uniqueMissingIds, effectiveBatchSize);
+
+    for (const chunk of chunks) {
+      try {
+        const items = await this.workItemApi.getWorkItems(
+          chunk,
+          ["System.Title", "System.Rev"],
+          undefined,
+          undefined,
+          WorkItemErrorPolicy.Omit,
+          this.project
+        );
+
+        for (const item of items || []) {
+          if (item && item.id) {
+            const info: TestCaseInfo = {
+              id: item.id,
+              revision: item.rev ?? 1,
+              title: item.fields?.["System.Title"] || "",
+            };
+            this.byId.set(item.id, info);
+          }
+        }
+      } catch (e) {
+        this.logger.warn(
+          `⚠️ Batch prefetch of ${chunk.length} work items failed; falling back to individual lookups: ${(e as Error).message}`
+        );
+      }
+    }
+  }
+
   async resolve(testName: string, candidateId?: string | null): Promise<TestCaseInfo> {
+    const existingInFlight = this.inFlightByName.get(testName);
+    if (existingInFlight) {
+      return existingInFlight;
+    }
+
+    const promise = this.resolveInternal(testName, candidateId).finally(() => {
+      this.inFlightByName.delete(testName);
+    });
+    this.inFlightByName.set(testName, promise);
+    return promise;
+  }
+
+  private async resolveInternal(testName: string, candidateId?: string | null): Promise<TestCaseInfo> {
     let info: TestCaseInfo | null = null;
 
     const existingFromId = await this.tryGetExistingById(testName, candidateId);

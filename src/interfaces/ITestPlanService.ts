@@ -40,7 +40,8 @@ export interface ITestPlanService {
         pointIds: number[],
         attachmentPath?: string,
         additionalRunAttachments?: string[],
-        runComment?: string
+        runComment?: string,
+        publishOptions?: { concurrency?: number; batchSize?: number }
     ): Promise<{ runId: number; runUrl: string }>;
     isTestFlaky(testCaseId: number, testName: string): Promise<boolean>;
 }

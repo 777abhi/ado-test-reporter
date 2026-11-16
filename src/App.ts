@@ -11,6 +11,13 @@ import { TestOutcomeSummary } from "./interfaces/IPrQualityGateService";
 import * as fs from "fs";
 import * as path from "path";
 import { isSafePath } from "./utils/PathUtils";
+import {
+    clampBatchSize,
+    clampConcurrency,
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_CONCURRENCY,
+    mapWithConcurrency,
+} from "./utils/AsyncUtils";
 
 export interface AppRunSummary {
     runId?: number;
@@ -129,6 +136,40 @@ export class App {
             }
         }
 
+        const concurrency = clampConcurrency(options.concurrency ?? DEFAULT_CONCURRENCY);
+        const batchSize = clampBatchSize(options.batchSize ?? DEFAULT_BATCH_SIZE);
+
+        const candidateIds: number[] = [];
+        for (const tc of parsedCases) {
+            const match = tc.name.match(TC_ID_REGEX);
+            if (match) {
+                const parsedId = parseInt(match[1], 10);
+                if (!isNaN(parsedId) && parsedId > 0) {
+                    candidateIds.push(parsedId);
+                }
+            }
+        }
+
+        if (candidateIds.length > 0 && typeof this.testCaseService.prefetchByIds === "function") {
+            await this.testCaseService.prefetchByIds(candidateIds, batchSize);
+        }
+
+        const resolvedEntries = await mapWithConcurrency(parsedCases, concurrency, async (tc) => {
+            const match = tc.name.match(TC_ID_REGEX);
+            const resolvedTestCase = await this.testCaseService.resolve(
+                tc.name,
+                match ? match[1] : null
+            );
+
+            let isFlaky = false;
+            const isQuarantined = this.quarantineService?.isQuarantined(resolvedTestCase.id, tc.name) ?? false;
+            if (tc.outcome === "Failed" && !isQuarantined && options.detectFlakyTests) {
+                isFlaky = await this.testPlanService.isTestFlaky(resolvedTestCase.id, tc.name);
+            }
+
+            return { tc, resolvedTestCase, isQuarantined, isFlaky };
+        });
+
         const resultsToPublish: TestCaseResultWithAttachments[] = [];
         const outcomeSummaries: TestOutcomeSummary[] = [];
         const testCaseIdsToLink: string[] = [];
@@ -141,14 +182,7 @@ export class App {
             isFlaky?: boolean;
         }[] = [];
 
-        for (const tc of parsedCases) {
-            const match = tc.name.match(TC_ID_REGEX);
-            const resolvedTestCase = await this.testCaseService.resolve(
-                tc.name,
-                match ? match[1] : null
-            );
-
-            const isQuarantined = this.quarantineService?.isQuarantined(resolvedTestCase.id, tc.name) ?? false;
+        for (const { tc, resolvedTestCase, isQuarantined, isFlaky } of resolvedEntries) {
             if (this.quarantineService) {
                 this.quarantineService.recordExecutionOutcome(resolvedTestCase.id, tc.name, tc.outcome);
             }
@@ -186,11 +220,6 @@ export class App {
                         `🛡️ Test '${tc.name}' [TC ${resolvedTestCase.id}] failed but is actively QUARANTINED. Suppressing failure task and soft-passing.`
                     );
                 } else {
-                    let isFlaky = false;
-                    if (options.detectFlakyTests) {
-                        isFlaky = await this.testPlanService.isTestFlaky(resolvedTestCase.id, tc.name);
-                    }
-
                     failedForTask.push({
                         testCaseId: String(resolvedTestCase.id),
                         testName: tc.name,
@@ -291,23 +320,30 @@ export class App {
             pointIds,
             attachResults ? junitFile : undefined,
             additionalAttachments,
-            runComment
+            runComment,
+            { concurrency, batchSize }
         );
 
         if (createFailureTasks) {
-            for (const failure of failedForTask) {
-                await this.failureTaskService.createTaskForFailure({
-                    testCaseId: failure.testCaseId,
-                    testName: failure.testName,
-                    errorMessage: failure.errorMessage,
-                    buildNumber: buildNumber,
-                    runUrl: runInfo.runUrl,
-                    runId: runInfo.runId,
-                    attachments: failure.attachments,
-                    isFlaky: failure.isFlaky,
-                    provenance: provenance,
-                });
-            }
+            await mapWithConcurrency(failedForTask, concurrency, async (failure) => {
+                try {
+                    await this.failureTaskService.createTaskForFailure({
+                        testCaseId: failure.testCaseId,
+                        testName: failure.testName,
+                        errorMessage: failure.errorMessage,
+                        buildNumber: buildNumber,
+                        runUrl: runInfo.runUrl,
+                        runId: runInfo.runId,
+                        attachments: failure.attachments,
+                        isFlaky: failure.isFlaky,
+                        provenance: provenance,
+                    });
+                } catch (err: any) {
+                    this.logger.warn(
+                        `⚠️ Failed to create failure task for '${failure.testName}' [TC ${failure.testCaseId}]: ${err?.message || err}`
+                    );
+                }
+            });
         } else {
             this.logger.log(
                 "ℹ️ Failure task creation is disabled (CREATE_FAILURE_TASKS=false)."
@@ -316,9 +352,15 @@ export class App {
 
         if (autoCloseOnPass) {
             this.logger.log(`🔄 Auto-closing defects for ${passedTestCaseIds.length} passed tests...`);
-            for (const tcId of passedTestCaseIds) {
-                await this.failureTaskService.resolveTaskForSuccess(tcId, buildNumber, provenance);
-            }
+            await mapWithConcurrency(passedTestCaseIds, concurrency, async (tcId) => {
+                try {
+                    await this.failureTaskService.resolveTaskForSuccess(tcId, buildNumber, provenance);
+                } catch (err: any) {
+                    this.logger.warn(
+                        `⚠️ Failed to auto-close defect for TC ${tcId}: ${err?.message || err}`
+                    );
+                }
+            });
         }
 
         return {

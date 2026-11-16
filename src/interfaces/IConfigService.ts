@@ -30,6 +30,8 @@ export type AppEnv = {
     prTargetBranch: string;
     prSourceBranch: string;
     prStatusCheck: boolean;
+    concurrency: number;
+    batchSize: number;
 };
 
 export type AppArgs = {
@@ -48,6 +50,8 @@ export type AppArgs = {
     prRepo?: string;
     prTargetBranch?: string;
     prStatusCheck?: boolean;
+    concurrency?: number;
+    batchSize?: number;
 };
 
 export interface IConfigService {

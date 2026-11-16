@@ -17,6 +17,14 @@ import {
 import { ITestPlanService, PlanSuiteInfo, SuiteInfo, TestCaseResultWithAttachments } from "./interfaces/ITestPlanService";
 import { ILogger } from "./interfaces/ILogger";
 import { isSafePath } from "./utils/PathUtils";
+import {
+  chunkArray,
+  clampBatchSize,
+  clampConcurrency,
+  DEFAULT_BATCH_SIZE,
+  DEFAULT_CONCURRENCY,
+  mapWithConcurrency,
+} from "./utils/AsyncUtils";
 
 export class TestPlanService implements ITestPlanService {
   private readonly MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 50MB
@@ -152,9 +160,12 @@ export class TestPlanService implements ITestPlanService {
       return;
     }
 
-    const idsCsv = idsToAdd.join(",");
-    this.logger.log(`🔗 Linking Test Cases to Suite: ${idsCsv}`);
-    await this.testApi.addTestCasesToSuite(this.project, planId, suiteId, idsCsv);
+    const idChunks = chunkArray(idsToAdd, DEFAULT_BATCH_SIZE);
+    for (const chunk of idChunks) {
+      const idsCsv = chunk.join(",");
+      this.logger.log(`🔗 Linking Test Cases to Suite: ${idsCsv}`);
+      await this.testApi.addTestCasesToSuite(this.project, planId, suiteId, idsCsv);
+    }
   }
 
   async mapPointsToResults(
@@ -208,8 +219,12 @@ export class TestPlanService implements ITestPlanService {
     pointIds: number[],
     attachmentPath?: string,
     additionalRunAttachments?: string[],
-    runComment?: string
+    runComment?: string,
+    publishOptions?: { concurrency?: number; batchSize?: number }
   ): Promise<{ runId: number; runUrl: string }> {
+    const concurrency = clampConcurrency(publishOptions?.concurrency ?? DEFAULT_CONCURRENCY);
+    const batchSize = clampBatchSize(publishOptions?.batchSize ?? DEFAULT_BATCH_SIZE);
+
     const runModel: RunCreateModel = {
       name: `Run ${buildNumber} - ${suiteName}`,
       plan: { id: String(planId) },
@@ -224,14 +239,15 @@ export class TestPlanService implements ITestPlanService {
     if (!testRun || !testRun.id) {
       throw new Error(`❌ Failed to create Test Run. Arguments: ${JSON.stringify(runModel)}`);
     }
-    this.logger.log(`🚀 Created Test Run: ${testRun.id}`);
+    const runId = testRun.id;
+    this.logger.log(`🚀 Created Test Run: ${runId}`);
 
     const runFilesToAttach = [
       ...(attachmentPath ? [attachmentPath] : []),
       ...(additionalRunAttachments || []),
     ];
 
-    for (const filePath of runFilesToAttach) {
+    await mapWithConcurrency(runFilesToAttach, concurrency, async (filePath) => {
       try {
         if (!isSafePath(filePath)) {
           this.logger.warn(`⚠️ Security Risk: Attachment path '${filePath}' traverses outside the working directory (or symlinked outside). Skipping.`);
@@ -250,9 +266,9 @@ export class TestPlanService implements ITestPlanService {
             await this.testApi.createTestRunAttachment(
               attachmentRequest,
               this.project,
-              testRun.id
+              runId
             );
-            this.logger.log(`📎 Attached file to run ${testRun.id}: ${filePath}`);
+            this.logger.log(`📎 Attached file to run ${runId}: ${filePath}`);
           }
         } else {
           this.logger.warn(`⚠️ Attachment file not found: ${filePath}`);
@@ -260,65 +276,73 @@ export class TestPlanService implements ITestPlanService {
       } catch (err) {
         this.logger.warn(`⚠️ Failed to attach file ${filePath}: ${err}`);
       }
-    }
+    });
 
     if (results.length > 0) {
-      const addedResults = await this.testApi.addTestResultsToTestRun(
-        results,
-        this.project,
-        testRun.id
-      );
+      const resultChunks = chunkArray(results, batchSize);
+      const attachmentTasks: { resultId: number; attachPath: string }[] = [];
+      let totalPublished = 0;
 
-      if (!addedResults || addedResults.length === 0) {
-        throw new Error("❌ Failed to add test results to the run. No results returned from API.");
-      }
-      this.logger.log(`📊 Published ${addedResults.length} results.`);
+      for (let chunkIdx = 0; chunkIdx < resultChunks.length; chunkIdx++) {
+        const chunk = resultChunks[chunkIdx];
+        const addedResults = await this.testApi.addTestResultsToTestRun(
+          chunk,
+          this.project,
+          runId
+        );
 
-      // Upload result attachments
-      for (let i = 0; i < addedResults.length; i++) {
-        const addedResult = addedResults[i];
-        const originalResult = results[i];
+        if (!addedResults || addedResults.length === 0) {
+          throw new Error("❌ Failed to add test results to the run. No results returned from API.");
+        }
+        totalPublished += addedResults.length;
 
-        if (originalResult.localAttachments && originalResult.localAttachments.length > 0) {
-          for (const attachPath of originalResult.localAttachments) {
-            try {
-              if (!isSafePath(attachPath)) {
-                this.logger.warn(`⚠️ Security Risk: Attachment path '${attachPath}' traverses outside the working directory (or symlinked outside). Skipping.`);
-                continue;
-              }
-
-              if (fs.existsSync(attachPath)) {
-                if (this.isAttachmentTooLarge(attachPath)) {
-                  continue;
-                }
-
-                const fileContent = fs.readFileSync(attachPath);
-                const encoded = fileContent.toString("base64");
-                const attachmentRequest: TestAttachmentRequestModel = {
-                  fileName: path.basename(attachPath),
-                  stream: encoded,
-                  attachmentType: "GeneralAttachment",
-                  comment: "Attached by ADO Test Reporter",
-                };
-
-                if (addedResult.id) {
-                    await this.testApi.createTestResultAttachment(
-                      attachmentRequest,
-                      this.project,
-                      testRun.id,
-                      addedResult.id
-                    );
-                    this.logger.log(`📎 Attached file to result ${addedResult.id}: ${attachPath}`);
-                }
-              } else {
-                this.logger.warn(`⚠️ Attachment file not found: ${attachPath}`);
-              }
-            } catch (err) {
-              this.logger.warn(`⚠️ Failed to attach file ${attachPath} to result: ${(err as Error).message}`);
+        for (let i = 0; i < addedResults.length; i++) {
+          const addedResult = addedResults[i];
+          const originalResult = chunk[i];
+          if (addedResult.id && originalResult?.localAttachments?.length) {
+            for (const attachPath of originalResult.localAttachments) {
+              attachmentTasks.push({ resultId: addedResult.id, attachPath });
             }
           }
         }
       }
+      this.logger.log(`📊 Published ${totalPublished} results (${resultChunks.length} batch${resultChunks.length === 1 ? "" : "es"}).`);
+
+      await mapWithConcurrency(attachmentTasks, concurrency, async ({ resultId, attachPath }) => {
+        try {
+          if (!isSafePath(attachPath)) {
+            this.logger.warn(`⚠️ Security Risk: Attachment path '${attachPath}' traverses outside the working directory (or symlinked outside). Skipping.`);
+            return;
+          }
+
+          if (fs.existsSync(attachPath)) {
+            if (this.isAttachmentTooLarge(attachPath)) {
+              return;
+            }
+
+            const fileContent = fs.readFileSync(attachPath);
+            const encoded = fileContent.toString("base64");
+            const attachmentRequest: TestAttachmentRequestModel = {
+              fileName: path.basename(attachPath),
+              stream: encoded,
+              attachmentType: "GeneralAttachment",
+              comment: "Attached by ADO Test Reporter",
+            };
+
+            await this.testApi.createTestResultAttachment(
+              attachmentRequest,
+              this.project,
+              runId,
+              resultId
+            );
+            this.logger.log(`📎 Attached file to result ${resultId}: ${attachPath}`);
+          } else {
+            this.logger.warn(`⚠️ Attachment file not found: ${attachPath}`);
+          }
+        } catch (err) {
+          this.logger.warn(`⚠️ Failed to attach file ${attachPath} to result: ${(err as Error).message}`);
+        }
+      });
     }
 
     const runUpdateModel: RunUpdateModel = { state: "Completed" };
