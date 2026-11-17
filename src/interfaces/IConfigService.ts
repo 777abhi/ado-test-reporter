@@ -34,6 +34,10 @@ export type AppEnv = {
     batchSize: number;
     maxRetries: number;
     retryBaseDelayMs: number;
+    webhookUrl?: string;
+    webhookType: "auto" | "slack" | "teams" | "json";
+    webhookAlways: boolean;
+    webhookFailOnError: boolean;
 };
 
 export type AppArgs = {
@@ -54,6 +58,9 @@ export type AppArgs = {
     prStatusCheck?: boolean;
     concurrency?: number;
     batchSize?: number;
+    webhookUrl?: string;
+    webhookType?: "auto" | "slack" | "teams" | "json";
+    webhookAlways?: boolean;
 };
 
 export interface IConfigService {

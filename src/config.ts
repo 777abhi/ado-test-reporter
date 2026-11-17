@@ -112,6 +112,14 @@ export class ConfigService implements IConfigService {
     const retryBaseDelayMs = clampRetryBaseDelayMs(
       process.env.ADO_RETRY_BASE_DELAY_MS ? Number(process.env.ADO_RETRY_BASE_DELAY_MS) : undefined
     );
+    const webhookUrl = process.env.ADO_WEBHOOK_URL || undefined;
+    const rawWebhookType = (process.env.ADO_WEBHOOK_TYPE || "auto").toLowerCase();
+    const webhookType: "auto" | "slack" | "teams" | "json" =
+      rawWebhookType === "slack" || rawWebhookType === "teams" || rawWebhookType === "json"
+        ? rawWebhookType
+        : "auto";
+    const webhookAlways = this.parseBoolean(process.env.ADO_WEBHOOK_ALWAYS, false);
+    const webhookFailOnError = this.parseBoolean(process.env.ADO_WEBHOOK_FAIL_ON_ERROR, false);
 
     if (!token || !orgUrl || !project) {
       throw new Error(
@@ -119,8 +127,11 @@ export class ConfigService implements IConfigService {
       );
     }
 
-    // Security: dynamically register authentication token into secret redactor
+    // Security: dynamically register authentication token & webhook URL into secret redactor
     SecretRedactor.registerSecret(token);
+    if (webhookUrl) {
+      SecretRedactor.registerSecret(webhookUrl);
+    }
 
     return {
       token,
@@ -157,6 +168,10 @@ export class ConfigService implements IConfigService {
       batchSize,
       maxRetries,
       retryBaseDelayMs,
+      webhookUrl,
+      webhookType,
+      webhookAlways,
+      webhookFailOnError,
     };
   }
 
@@ -181,6 +196,17 @@ export class ConfigService implements IConfigService {
       argv["concurrency"] !== undefined ? clampConcurrency(Number(argv["concurrency"])) : undefined;
     const batchSize =
       argv["batch-size"] !== undefined ? clampBatchSize(Number(argv["batch-size"])) : undefined;
+    const webhookUrl = argv["webhook-url"] ? String(argv["webhook-url"]) : undefined;
+    const rawArgWebhookType = argv["webhook-type"] ? String(argv["webhook-type"]).toLowerCase() : undefined;
+    const webhookType =
+      rawArgWebhookType === "slack" ||
+      rawArgWebhookType === "teams" ||
+      rawArgWebhookType === "json" ||
+      rawArgWebhookType === "auto"
+        ? (rawArgWebhookType as "auto" | "slack" | "teams" | "json")
+        : undefined;
+    const webhookAlways =
+      argv["webhook-always"] !== undefined ? !!argv["webhook-always"] : undefined;
     return {
       junitFile,
       planName,
@@ -199,6 +225,9 @@ export class ConfigService implements IConfigService {
       prStatusCheck,
       concurrency,
       batchSize,
+      webhookUrl,
+      webhookType,
+      webhookAlways,
     };
   }
 

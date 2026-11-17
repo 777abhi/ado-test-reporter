@@ -19,6 +19,8 @@ import { DashboardDataService } from "./DashboardDataService";
 import { DashboardHtmlGenerator } from "./DashboardHtmlGenerator";
 import { QuarantineService } from "./QuarantineService";
 import { PrQualityGateService } from "./PrQualityGateService";
+import { NotificationService } from "./NotificationService";
+import { AlertRegressionItem } from "./interfaces/INotificationService";
 import { isSafePath } from "./utils/PathUtils";
 import * as fs from "fs";
 
@@ -119,6 +121,22 @@ async function run() {
         type: "number",
         demandOption: false,
         describe: "Batch size for chunked ADO API calls (1-1000, default: 200)",
+      },
+      "webhook-url": {
+        type: "string",
+        demandOption: false,
+        describe: "Slack, Microsoft Teams, or generic JSON webhook URL for failure/regression/quarantine alerts",
+      },
+      "webhook-type": {
+        type: "string",
+        demandOption: false,
+        choices: ["auto", "slack", "teams", "json"],
+        describe: "Webhook payload format (default: auto-detect from URL)",
+      },
+      "webhook-always": {
+        type: "boolean",
+        demandOption: false,
+        describe: "Send webhook notification even when all tests pass with no regressions or expired quarantines",
       },
     })
     .parseSync();
@@ -276,6 +294,9 @@ async function run() {
     }
   }
 
+  let prGateNewRegressions: AlertRegressionItem[] = [];
+  let prGateFailureError: Error | undefined;
+
   const prGateActive = args.prGate ?? env.prGateEnabled;
   if (prGateActive) {
     const prGateService = new PrQualityGateService(
@@ -309,6 +330,12 @@ async function run() {
       failOnNewRegressions: true,
     });
 
+    prGateNewRegressions = gateResult.newRegressions.map((r) => ({
+      testName: r.testName,
+      testCaseId: r.testCaseId,
+      errorMessage: r.errorMessage,
+    }));
+
     logger.logAudit({
       eventType: "PR_GATE_EVALUATED",
       level: gateResult.passed ? "INFO" : "WARN",
@@ -327,11 +354,56 @@ async function run() {
     });
 
     if (!gateResult.passed) {
-      throw new Error(
+      prGateFailureError = new Error(
         `❌ PR Quality Gate FAILED: ${gateResult.newRegressions.length} new regression(s) detected.`
       );
+    } else {
+      logger.log("✅ PR Quality Gate PASSED: 0 new regressions detected.");
     }
-    logger.log("✅ PR Quality Gate PASSED: 0 new regressions detected.");
+  }
+
+  const webhookUrl = args.webhookUrl || env.webhookUrl;
+  if (webhookUrl) {
+    const results = runSummary?.results || [];
+    const passedTests = results.filter((r) => r.outcome === "Passed").length;
+    const failedTests = results.filter((r) => r.outcome === "Failed" && !r.isQuarantined).length;
+    const quarantinedTests = results.filter((r) => r.isQuarantined).length;
+    const expiredQuarantines = quarantineService
+      .load()
+      .quarantinedTests
+      .filter((e) => e.status === "expired")
+      .map((e) => ({
+        testKey: e.testKey,
+        testName: e.testCaseTitle,
+        expiresAt: e.expiresAt || "",
+      }));
+
+    const notificationService = new NotificationService(logger);
+    await notificationService.notify(
+      {
+        project: env.project,
+        buildNumber: env.buildNumber,
+        branch: env.branch,
+        runId: runSummary?.runId,
+        runUrl: runSummary?.runUrl,
+        totalTests: results.length,
+        passedTests,
+        failedTests,
+        quarantinedTests,
+        newRegressions: prGateNewRegressions,
+        expiredQuarantines,
+      },
+      {
+        webhookUrl,
+        webhookType: args.webhookType ?? env.webhookType,
+        always: args.webhookAlways ?? env.webhookAlways,
+        failOnError: env.webhookFailOnError,
+      }
+    );
+  }
+
+  if (prGateFailureError) {
+    throw prGateFailureError;
   }
 }
 
