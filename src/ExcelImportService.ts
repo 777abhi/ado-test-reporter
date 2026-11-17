@@ -56,7 +56,7 @@ export class ExcelImportService implements IExcelImportService {
         const dynamicHtmlFields = await this.testCaseService.getHtmlFields();
         dynamicHtmlFields.forEach((f) => this.htmlFields.add(f));
 
-        const rows = this.parser.parse(filePath);
+        const rows = await this.parser.parse(filePath);
         this.logger.log(`Parsed ${rows.length} rows from ${filePath}`);
 
         const testCaseIds: string[] = [];

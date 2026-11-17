@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import * as glob from 'glob';
+import { globSync } from 'glob';
 import { GherkinStreams } from '@cucumber/gherkin-streams';
 import * as messages from '@cucumber/messages';
 import { IFeatureParser } from './interfaces/IFeatureParser';
@@ -9,7 +9,7 @@ import { SecretRedactor } from './utils/SecretRedactor';
 export class GherkinFeatureParser implements IFeatureParser {
     public async parse(pattern: string): Promise<ParsedScenario[]> {
         console.log(`Searching for feature files: ${pattern}`);
-        const files = glob.sync(pattern);
+        const files = globSync(pattern);
 
         if (files.length === 0) {
             console.log("No feature files found.");

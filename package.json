@@ -21,11 +21,10 @@
     "@cucumber/gherkin": "^38.0.0",
     "@cucumber/gherkin-streams": "^6.0.0",
     "@cucumber/messages": "^32.0.0",
-    "@types/xlsx": "^0.0.35",
     "azure-devops-node-api": "^12.0.0",
     "dotenv": "^16.6.1",
-    "glob": "^13.0.0",
-    "xlsx": "^0.18.5",
+    "exceljs": "^4.4.0",
+    "glob": "^14.0.6",
     "xml2js": "^0.6.0",
     "yargs": "^17.7.2"
   },

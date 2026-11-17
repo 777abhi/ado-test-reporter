@@ -1,3 +1,3 @@
 export interface IExcelParser {
-    parse(filePath: string): any[];
+    parse(filePath: string): Promise<any[]> | any[];
 }

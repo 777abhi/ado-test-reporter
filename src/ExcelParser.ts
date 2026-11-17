@@ -1,9 +1,30 @@
-import * as xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 import * as fs from 'fs';
 import { IExcelParser } from './interfaces/IExcelParser';
 
+function normalizeCellValue(value: ExcelJS.CellValue): any {
+    if (value === null || value === undefined) {
+        return undefined;
+    }
+    if (typeof value === 'object') {
+        if (value instanceof Date) {
+            return value.toISOString();
+        }
+        if ('richText' in value && Array.isArray(value.richText)) {
+            return value.richText.map((part) => part.text).join('');
+        }
+        if ('text' in value) {
+            return value.text;
+        }
+        if ('result' in value) {
+            return value.result;
+        }
+    }
+    return value;
+}
+
 export class ExcelParser implements IExcelParser {
-    public parse(filePath: string): any[] {
+    public async parse(filePath: string): Promise<any[]> {
         if (!fs.existsSync(filePath)) {
             throw new Error(`Excel file not found: ${filePath}`);
         }
@@ -23,14 +44,44 @@ export class ExcelParser implements IExcelParser {
             );
         }
 
-        const workbook = xlsx.readFile(filePath);
-        if (workbook.SheetNames.length === 0) {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath);
+
+        if (workbook.worksheets.length === 0) {
             throw new Error(`Excel file "${filePath}" has no sheets.`);
         }
 
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
+        const sheet = workbook.worksheets[0];
+        const headers: string[] = [];
+        const rows: any[] = [];
 
-        return xlsx.utils.sheet_to_json(sheet);
+        sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+            if (rowNumber === 1) {
+                row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                    const headerVal = normalizeCellValue(cell.value);
+                    headers[colNumber] = headerVal !== undefined ? String(headerVal).trim() : '';
+                });
+                return;
+            }
+
+            const record: Record<string, any> = {};
+            let hasValue = false;
+
+            for (let colNumber = 1; colNumber < headers.length; colNumber++) {
+                const header = headers[colNumber];
+                if (!header) continue;
+                const cellVal = normalizeCellValue(row.getCell(colNumber).value);
+                if (cellVal !== undefined && cellVal !== '') {
+                    record[header] = cellVal;
+                    hasValue = true;
+                }
+            }
+
+            if (hasValue) {
+                rows.push(record);
+            }
+        });
+
+        return rows;
     }
 }
