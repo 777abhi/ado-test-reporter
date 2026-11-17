@@ -2,8 +2,18 @@
   "name": "ado-test-reporter",
   "version": "1.0.0",
   "description": "Syncs JUnit results to Azure Test Plans using Pipeline Tokens",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "bin": {
+    "ado-test-reporter": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "tsc",
+    "prepack": "npm run build",
     "start": "ts-node src/index.ts",
     "sync-features": "ts-node src/utils/syncFeaturesToAdo.ts",
     "import-excel": "ts-node src/utils/importExcel.ts",
