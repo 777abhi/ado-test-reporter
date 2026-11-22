@@ -218,6 +218,7 @@ export class ConfigService implements IConfigService {
         : undefined;
     const webhookAlways =
       argv["webhook-always"] !== undefined ? !!argv["webhook-always"] : undefined;
+    const dryRun = argv["dry-run"] !== undefined ? !!argv["dry-run"] : undefined;
     return {
       junitFile,
       planName,
@@ -239,6 +240,7 @@ export class ConfigService implements IConfigService {
       webhookUrl,
       webhookType,
       webhookAlways,
+      dryRun,
     };
   }
 

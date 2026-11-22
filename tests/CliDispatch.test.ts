@@ -50,6 +50,20 @@ describe("CLI Unified Router", () => {
       modulePath: "./utils/fetchVariableGroup",
       forwardedArgs: ["--group-name", "QA"],
     });
+
+    expect(resolveCliDispatch(["init", "--yes"])).toEqual({
+      action: "run",
+      command: "init",
+      modulePath: "./utils/initCli",
+      forwardedArgs: ["--yes"],
+    });
+
+    expect(resolveCliDispatch(["doctor", "--offline"])).toEqual({
+      action: "run",
+      command: "doctor",
+      modulePath: "./utils/doctorCli",
+      forwardedArgs: ["--offline"],
+    });
   });
 
   test("shows help when no arguments are given and falls back to publish for flag-only args", () => {

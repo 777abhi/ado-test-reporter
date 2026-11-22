@@ -19,5 +19,6 @@ export interface RunOptions {
     quarantineFailOnExpired?: boolean;
     concurrency?: number;
     batchSize?: number;
+    dryRun?: boolean;
 }
 

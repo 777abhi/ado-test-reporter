@@ -10,6 +10,13 @@ If you installed `ado-test-reporter` as a package (or run via `npx` in CI/CD or 
 # Show all subcommands and usage
 npx ado-test-reporter --help
 
+# Guided setup wizard (.env & optional quarantine.json) and pre-flight diagnostics
+npx ado-test-reporter init
+npx ado-test-reporter doctor
+
+# Preview JUnit sync without mutating Azure DevOps (--dry-run)
+npx ado-test-reporter publish --junit-file path/to/junit.xml --dry-run
+
 # Publish JUnit XML results to Azure Test Plans
 npx ado-test-reporter publish \
   --junit-file path/to/junit.xml \

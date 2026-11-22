@@ -84,13 +84,6 @@ export class App {
                 ? `AutoSuite-${buildNumber || new Date().toISOString().replace(/[:.]/g, "-")}`
                 : suiteName;
 
-        const planInfo = await this.testPlanService.ensurePlan(actualPlanName);
-        const suiteInfo = await this.testPlanService.ensureSuite(
-            planInfo.planId,
-            planInfo.rootSuiteId,
-            actualSuiteName
-        );
-
         if (options.artifactsDir) {
             const artifactsDir = path.resolve(options.artifactsDir);
             const pattern = options.artifactPattern || "{testName}.png";
@@ -100,13 +93,7 @@ export class App {
                 let matchCount = 0;
 
                 for (const tc of parsedCases) {
-                    // Sanitize test name for filename usage (basic replacement of illegal chars)
-                    // Note: User's test runner might have specific naming conventions.
-                    // We'll replace spaces with placeholders if needed or just use raw if file exists.
-                    // For now, let's try direct substitution.
-                    const safeTestName = tc.name.replace(/[^a-zA-Z0-9_\- ]/g, "_"); // Basic sanitization
-
-                    // Support multiple patterns (comma separated)
+                    const safeTestName = tc.name.replace(/[^a-zA-Z0-9_\- ]/g, "_");
                     const patterns = pattern.split(",");
 
                     for (const pat of patterns) {
@@ -114,12 +101,10 @@ export class App {
                         const artifactPath = path.resolve(artifactsDir, filename);
 
                         if (fs.existsSync(artifactPath)) {
-                             // Validate path security (ensure it doesn't traverse out of artifactsDir)
                              if (isSafePath(artifactPath, artifactsDir)) {
                                  if (!tc.attachments) {
                                      tc.attachments = [];
                                  }
-                                 // check for duplicates
                                  if (!tc.attachments.includes(artifactPath)) {
                                      tc.attachments.push(artifactPath);
                                      matchCount++;
@@ -135,6 +120,49 @@ export class App {
                 this.logger.warn(`⚠️ Artifacts directory not found: ${artifactsDir}`);
             }
         }
+
+        if (options.dryRun) {
+            const dryResults: TestOutcomeSummary[] = parsedCases.map((tc) => {
+                const match = tc.name.match(TC_ID_REGEX);
+                const tcIdStr = match ? match[1] : undefined;
+                const isQuarantined = this.quarantineService
+                    ? this.quarantineService.isQuarantined(tcIdStr, tc.name)
+                    : false;
+                return {
+                    testName: tc.name,
+                    testCaseId: tcIdStr,
+                    outcome: tc.outcome,
+                    durationMs: tc.durationMs,
+                    errorMessage: tc.errorMessage,
+                    isQuarantined,
+                };
+            });
+
+            const passed = dryResults.filter((r) => r.outcome === "Passed").length;
+            const failed = dryResults.filter((r) => r.outcome === "Failed" && !r.isQuarantined).length;
+            const quarantined = dryResults.filter((r) => r.outcome === "Failed" && r.isQuarantined).length;
+            const totalAttachments = parsedCases.reduce((sum, tc) => sum + (tc.attachments?.length || 0), 0);
+
+            this.logger.log(`\n🔍 [DRY RUN] No changes will be made to Azure DevOps.`);
+            this.logger.log(`   Target Plan:   ${actualPlanName}`);
+            this.logger.log(`   Target Suite:  ${actualSuiteName}`);
+            this.logger.log(`   Test Cases:    ${parsedCases.length} total (${passed} passed, ${failed} failed, ${quarantined} quarantined soft-pass)`);
+            this.logger.log(`   Attachments:   ${totalAttachments} local artifact(s) matched${attachResults ? " + JUnit XML" : ""}`);
+            if (createFailureTasks && failed > 0) {
+                this.logger.log(`   Failure Tasks: Would create/update defects for ${failed} unquarantined failure(s).`);
+            }
+            if (autoCloseOnPass && passed > 0) {
+                this.logger.log(`   Auto-Close:    Would check ${passed} passing test(s) for open defect closure.`);
+            }
+            return { results: dryResults };
+        }
+
+        const planInfo = await this.testPlanService.ensurePlan(actualPlanName);
+        const suiteInfo = await this.testPlanService.ensureSuite(
+            planInfo.planId,
+            planInfo.rootSuiteId,
+            actualSuiteName
+        );
 
         const concurrency = clampConcurrency(options.concurrency ?? DEFAULT_CONCURRENCY);
         const batchSize = clampBatchSize(options.batchSize ?? DEFAULT_BATCH_SIZE);

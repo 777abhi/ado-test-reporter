@@ -20,6 +20,8 @@
     "fetch-variable-group": "ts-node src/utils/fetchVariableGroup.ts",
     "dashboard": "ts-node src/utils/runDashboard.ts --mode serve",
     "dashboard:export": "ts-node src/utils/runDashboard.ts --mode export",
+    "init": "ts-node src/utils/initCli.ts",
+    "doctor": "ts-node src/utils/doctorCli.ts",
     "quarantine": "ts-node src/utils/quarantineCli.ts",
     "pr-gate": "ts-node src/utils/prGateCli.ts",
     "test": "jest",

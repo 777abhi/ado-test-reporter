@@ -9,7 +9,9 @@ export type CliCommand =
   | "dashboard"
   | "quarantine"
   | "pr-gate"
-  | "fetch-variable-group";
+  | "fetch-variable-group"
+  | "init"
+  | "doctor";
 
 const COMMAND_MODULES: Record<CliCommand, string> = {
   publish: "./index",
@@ -19,6 +21,8 @@ const COMMAND_MODULES: Record<CliCommand, string> = {
   quarantine: "./utils/quarantineCli",
   "pr-gate": "./utils/prGateCli",
   "fetch-variable-group": "./utils/fetchVariableGroup",
+  init: "./utils/initCli",
+  doctor: "./utils/doctorCli",
 };
 
 export interface CliDispatchResult {
@@ -79,6 +83,8 @@ Usage:
   ado-test-reporter [command] [options]
 
 Commands:
+  init                  Interactive setup wizard to scaffold .env & quarantine.json
+  doctor                Verify Node.js, .env config, and Azure DevOps connectivity
   publish               Publish JUnit XML results to Azure Test Plans (default)
   sync-features         Sync Gherkin .feature files to Azure DevOps Test Cases
   import-excel          Import Test Cases from an Excel (.xlsx) workbook
@@ -88,7 +94,9 @@ Commands:
   fetch-variable-group  Export an Azure DevOps Variable Group to .env
 
 Examples:
-  ado-test-reporter publish --junit-file src/results.xml --plan-name "Smoke"
+  ado-test-reporter init
+  ado-test-reporter doctor
+  ado-test-reporter publish --junit-file src/results.xml --plan-name "Smoke" --dry-run
   ado-test-reporter dashboard --mode export --days 30
   ado-test-reporter pr-gate --pr-id 123
   ado-test-reporter <command> --help

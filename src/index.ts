@@ -139,6 +139,12 @@ async function run() {
         demandOption: false,
         describe: "Send webhook notification even when all tests pass with no regressions or expired quarantines",
       },
+      "dry-run": {
+        type: "boolean",
+        demandOption: false,
+        default: false,
+        describe: "Parse JUnit XML and preview actions without making any changes in Azure DevOps",
+      },
     })
     .strict()
     .help()
@@ -148,7 +154,6 @@ async function run() {
   const configService: IConfigService = new ConfigService();
   const azureClientProvider: IAzureClientProvider = new AzureClientProvider();
 
-  const env = configService.loadEnvironment();
   const args = configService.loadArgs(argv, defaultJUnit);
 
   if (!fs.existsSync(args.junitFile)) {
@@ -157,33 +162,88 @@ async function run() {
     );
   }
 
-  const logger = new AuditLogger(env.auditLogPath);
-  logger.logAudit({
-    eventType: "EXECUTION_STARTED",
-    level: "INFO",
-    action: "Starting ADO test sync execution",
-    actor: env.triggerActor,
-    buildId: env.buildId,
-    commitSha: env.commitSha,
-    details: {
-      project: env.project,
-      branch: env.branch,
-      authType: env.authType,
-      autoCloseTargetState: env.autoCloseTargetState,
-    },
-  });
-
-  const clients = await azureClientProvider.createClients(
-    env.token,
-    env.orgUrl,
-    env.authType,
-    logger,
-    {
-      maxRetries: env.maxRetries,
-      baseDelayMs: env.retryBaseDelayMs,
+  let env: ReturnType<IConfigService["loadEnvironment"]>;
+  if (args.dryRun) {
+    try {
+      env = configService.loadEnvironment();
+    } catch {
+      env = {
+        token: "",
+        orgUrl: process.env.ADO_ORG_URL || "https://dev.azure.com/dry-run",
+        project: process.env.ADO_PROJECT || "dry-run-project",
+        buildId: 0,
+        buildNumber: process.env.ADO_BUILD_NUMBER || "DryRun",
+        createFailureTasks: true,
+        defectType: process.env.ADO_DEFECT_TYPE || "Task",
+        autoCloseOnPass: false,
+        fallbackToNameSearch: false,
+        autoCreateTestCases: true,
+        autoCreatePlan: true,
+        autoCreateSuite: true,
+        htmlFields: [],
+        detectFlakyTests: false,
+        commitSha: "local-head",
+        branch: "local",
+        buildUri: "",
+        triggerActor: process.env.USER || "dry-run",
+        agentName: "local-runner",
+        authType: "auto",
+        autoCloseAllowedBranches: ["main", "master"],
+        autoCloseTargetState: "Resolved",
+        quarantineFailOnExpired: false,
+        auditLogPath: process.env.ADO_AUDIT_LOG_PATH || "audit-events.ndjson",
+        prGateEnabled: false,
+        prId: 0,
+        prRepositoryId: "",
+        prTargetBranch: "refs/heads/main",
+        prSourceBranch: "local",
+        prStatusCheck: false,
+        concurrency: 5,
+        batchSize: 200,
+        maxRetries: 3,
+        retryBaseDelayMs: 500,
+        webhookType: "auto",
+        webhookAlways: false,
+        webhookFailOnError: false,
+      };
     }
-  );
+  } else {
+    env = configService.loadEnvironment();
+  }
+
+  const logger = new AuditLogger(env.auditLogPath);
   const parser = new JUnitParser();
+  const quarantineService = new QuarantineService(logger);
+
+  if (!args.dryRun) {
+    logger.logAudit({
+      eventType: "EXECUTION_STARTED",
+      level: "INFO",
+      action: "Starting ADO test sync execution",
+      actor: env.triggerActor,
+      buildId: env.buildId,
+      commitSha: env.commitSha,
+      details: {
+        project: env.project,
+        branch: env.branch,
+        authType: env.authType,
+        autoCloseTargetState: env.autoCloseTargetState,
+      },
+    });
+  }
+
+  const clients = args.dryRun
+    ? ({} as Awaited<ReturnType<IAzureClientProvider["createClients"]>>)
+    : await azureClientProvider.createClients(
+        env.token,
+        env.orgUrl,
+        env.authType,
+        logger,
+        {
+          maxRetries: env.maxRetries,
+          baseDelayMs: env.retryBaseDelayMs,
+        }
+      );
 
   // Instantiate Services
   const testCaseService = new TestCaseService(
@@ -214,7 +274,6 @@ async function run() {
     env.autoCloseTargetState,
     env.branch
   );
-  const quarantineService = new QuarantineService(logger);
   const app = new App(
     testCaseService,
     testPlanService,
@@ -254,9 +313,14 @@ async function run() {
     quarantineFailOnExpired: env.quarantineFailOnExpired,
     concurrency: args.concurrency ?? env.concurrency,
     batchSize: args.batchSize ?? env.batchSize,
+    dryRun: args.dryRun,
   };
 
   const runSummary = await app.run(runOptions, args.junitFile);
+
+  if (args.dryRun) {
+    return;
+  }
 
   logger.logAudit({
     eventType: "EXECUTION_COMPLETED",

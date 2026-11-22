@@ -61,6 +61,7 @@ export type AppArgs = {
     webhookUrl?: string;
     webhookType?: "auto" | "slack" | "teams" | "json";
     webhookAlways?: boolean;
+    dryRun?: boolean;
 };
 
 export interface IConfigService {
