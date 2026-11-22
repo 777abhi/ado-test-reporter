@@ -5,6 +5,12 @@ import { SecretRedactor } from "./utils/SecretRedactor";
 
 export class JUnitParser implements ITestResultParser {
   async parse(filePath: string): Promise<ParsedTestCase[]> {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(
+        `JUnit XML file not found: ${filePath}. Pass --junit-file <path> to specify your test results file.`
+      );
+    }
+
     const stats = fs.statSync(filePath);
 
     if (!stats.isFile()) {

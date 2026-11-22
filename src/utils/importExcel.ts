@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import yargsFactory from "yargs/yargs";
 import { hideBin } from "yargs/helpers";
@@ -12,6 +13,7 @@ import { SecretRedactor } from "./SecretRedactor";
 
 async function main() {
   const argv = yargsFactory(hideBin(process.argv))
+    .scriptName("ado-test-reporter import-excel")
     .options({
       "file": {
         type: "string",
@@ -34,7 +36,19 @@ async function main() {
         describe: "Target Test Suite Name",
       },
     })
+    .strict()
+    .help()
+    .alias("h", "help")
     .parseSync();
+
+  const excelPath = path.resolve(argv.file);
+  const mappingPath = path.resolve(argv.mapping);
+  if (!fs.existsSync(excelPath)) {
+    throw new Error(`Excel file not found: ${excelPath}`);
+  }
+  if (!fs.existsSync(mappingPath)) {
+    throw new Error(`Column mapping JSON file not found: ${mappingPath}`);
+  }
 
   const configService = new ConfigService();
   const env = configService.loadEnvironment();
@@ -45,7 +59,16 @@ async function main() {
   const logger = new ConsoleLogger();
   const azureClientProvider = new AzureClientProvider();
 
-  const clients = await azureClientProvider.createClients(env.token, env.orgUrl);
+  const clients = await azureClientProvider.createClients(
+    env.token,
+    env.orgUrl,
+    env.authType,
+    logger,
+    {
+      maxRetries: env.maxRetries,
+      baseDelayMs: env.retryBaseDelayMs,
+    }
+  );
 
   const testCaseService = new TestCaseService(
     clients.workItemApi,

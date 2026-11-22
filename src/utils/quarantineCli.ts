@@ -8,13 +8,13 @@ async function main() {
   const quarantineService = new QuarantineService(logger);
 
   const argv = await yargsFactory(hideBin(process.argv))
-    .scriptName("quarantine")
+    .scriptName("ado-test-reporter quarantine")
     .usage("$0 <cmd> [args]")
     .command("list", "List all actively quarantined tests", (yargs) => {
       return yargs.option("all", {
         type: "boolean",
         default: false,
-        describe: "Include graduated and removed tests",
+        describe: "Include graduated, expired, and removed tests",
       });
     })
     .command("add", "Add a test to quarantine (soft-pass mode)", (yargs) => {
@@ -87,8 +87,16 @@ async function main() {
         });
     })
     .command("candidates", "List quarantined tests ready for graduation", () => {})
-    .demandCommand(1, "Please specify a quarantine command: list, add, remove, graduate, or candidates")
+    .command("history", "Show quarantine audit history and graduation progress", (yargs) => {
+      return yargs.option("id", {
+        type: "string",
+        describe: "Filter history by Test Case ID or testKey",
+      });
+    })
+    .demandCommand(1, "Please specify a quarantine command: list, add, remove, graduate, candidates, or history")
+    .strict()
     .help()
+    .alias("h", "help")
     .argv;
 
   const command = argv._[0] as string;
@@ -113,6 +121,8 @@ async function main() {
             ? (t.consecutivePasses >= t.healingThreshold ? "🟢 READY TO GRADUATE" : "🟡 ACTIVE")
             : t.status === "graduated"
             ? "🎓 GRADUATED"
+            : t.status === "expired"
+            ? "⏰ EXPIRED"
             : "⚪ REMOVED";
 
         console.log(`- [${statusBadge}] ${idStr} - "${t.testCaseTitle}"`);
@@ -186,7 +196,43 @@ async function main() {
         const idStr = c.test.testCaseId ? `TC${c.test.testCaseId}` : c.test.testKey;
         console.log(`- 🟢 ${idStr} - "${c.test.testCaseTitle}"`);
         console.log(`  Passing streak: ${c.consecutivePasses}/${c.healingThreshold} consecutive clean runs`);
-        console.log(`  To graduate run: npm run quarantine -- graduate --id ${idStr}\n`);
+        console.log(`  To graduate run: ado-test-reporter quarantine graduate --id ${idStr}\n`);
+      }
+      break;
+    }
+
+    case "history": {
+      const config = quarantineService.load();
+      const filterId = argv.id ? QuarantineService.normalizeTestCaseId(argv.id as string) : undefined;
+      const rawFilter = argv.id ? String(argv.id).trim().toLowerCase() : undefined;
+      const records = filterId || rawFilter
+        ? config.quarantinedTests.filter(
+            (t) =>
+              t.testCaseId === filterId ||
+              t.testKey.toLowerCase() === rawFilter ||
+              `tc${t.testCaseId}`.toLowerCase() === rawFilter
+          )
+        : config.quarantinedTests;
+
+      console.log(`\n📜 Quarantine Audit History (${records.length} record(s), file: ${quarantineService.getConfigFilePath()}):\n`);
+      if (records.length === 0) {
+        console.log("   (No matching quarantine history found.)\n");
+        return;
+      }
+
+      for (const t of records) {
+        const idStr = t.testCaseId ? `TC${t.testCaseId}` : t.testKey;
+        console.log(`- [${t.status.toUpperCase()}] ${idStr} - "${t.testCaseTitle}" (Streak: ${t.consecutivePasses}/${t.healingThreshold})`);
+        if (t.auditHistory && t.auditHistory.length > 0) {
+          for (const entry of t.auditHistory) {
+            const actor = entry.actor ? ` by ${entry.actor}` : "";
+            const details = entry.details ? ` — ${entry.details}` : "";
+            console.log(`    ${entry.timestamp} | ${entry.action}${actor}${details}`);
+          }
+        } else {
+          console.log(`    ${t.quarantinedAt} | quarantined by ${t.quarantinedBy || "unknown"} — ${t.reason}`);
+        }
+        console.log("");
       }
       break;
     }

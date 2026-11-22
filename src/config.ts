@@ -121,9 +121,20 @@ export class ConfigService implements IConfigService {
     const webhookAlways = this.parseBoolean(process.env.ADO_WEBHOOK_ALWAYS, false);
     const webhookFailOnError = this.parseBoolean(process.env.ADO_WEBHOOK_FAIL_ON_ERROR, false);
 
-    if (!token || !orgUrl || !project) {
+    const missing: string[] = [];
+    if (!token) missing.push("ADO_TOKEN (or SYSTEM_ACCESSTOKEN)");
+    if (!orgUrl) missing.push("ADO_ORG_URL (or SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)");
+    if (!project) missing.push("ADO_PROJECT (or SYSTEM_TEAMPROJECT)");
+
+    if (missing.length > 0) {
       throw new Error(
-        "Missing required environment variables (token/orgUrl/project). Provide SYSTEM_* values in pipeline or set ADO_TOKEN, ADO_ORG_URL, ADO_PROJECT locally."
+        `Missing required environment variable(s): ${missing.join(", ")}. Set them in .env locally or via Azure Pipeline variables.`
+      );
+    }
+
+    if (!/^https?:\/\/.+/i.test(orgUrl.trim())) {
+      throw new Error(
+        `Invalid ADO_ORG_URL: "${orgUrl}". Expected an http(s):// URL such as "https://dev.azure.com/your-org".`
       );
     }
 

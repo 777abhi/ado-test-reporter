@@ -1,3 +1,5 @@
+import yargsFactory from 'yargs/yargs';
+import { hideBin } from 'yargs/helpers';
 import { ConfigService } from '../config';
 import { AzureClientProvider } from '../AzureClientProvider';
 import { GherkinFeatureParser } from '../GherkinFeatureParser';
@@ -9,17 +11,40 @@ import { SecretRedactor } from '../utils/SecretRedactor';
 
 async function main() {
     try {
+        const argv = yargsFactory(hideBin(process.argv))
+            .scriptName('ado-test-reporter sync-features')
+            .options({
+                pattern: {
+                    type: 'string',
+                    default: 'features/**/*.feature',
+                    describe: 'Glob pattern for Gherkin .feature files',
+                },
+            })
+            .strict()
+            .help()
+            .alias('h', 'help')
+            .parseSync();
+
         // 1. Config
         const configService = new ConfigService();
         const env = configService.loadEnvironment();
+        const logger = new ConsoleLogger();
 
         // 2. ADO Clients
         const azureClientProvider = new AzureClientProvider();
-        const clients = await azureClientProvider.createClients(env.token, env.orgUrl);
+        const clients = await azureClientProvider.createClients(
+            env.token,
+            env.orgUrl,
+            env.authType,
+            logger,
+            {
+                maxRetries: env.maxRetries,
+                baseDelayMs: env.retryBaseDelayMs,
+            }
+        );
         const witApi = clients.workItemApi;
 
         // 3. Services
-        const logger = new ConsoleLogger();
         const parser = new GherkinFeatureParser();
         const stepConverter = new GherkinStepConverter();
 
@@ -35,19 +60,19 @@ async function main() {
         const adoSyncService = new AdoSyncService(testCaseService, stepConverter);
 
         // 4. Run
-        const featuresPattern = 'features/**/*.feature';
+        const featuresPattern = argv.pattern;
         const scenarios = await parser.parse(featuresPattern);
 
-        console.log(`Parsed ${scenarios.length} scenarios.`);
-        
+        logger.log(`Parsed ${scenarios.length} scenarios.`);
+
         const scenariosToSync = scenarios.filter(s => !!s.tcId);
-        console.log(`Found ${scenariosToSync.length} scenarios with @TC_ tags to sync.`);
+        logger.log(`Found ${scenariosToSync.length} scenarios with @TC_ tags to sync.`);
 
         for (const scenario of scenariosToSync) {
             await adoSyncService.updateTestCase(scenario);
         }
 
-        console.log("Feature sync completed.");
+        logger.log("Feature sync completed.");
 
     } catch (err) {
         const errorStr = typeof err === 'string' ? err : ((err as Error).message || JSON.stringify(err));

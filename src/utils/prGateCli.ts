@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import yargsFactory from "yargs/yargs";
 import { hideBin } from "yargs/helpers";
@@ -15,6 +16,7 @@ const TC_ID_REGEX = /TC(\d+)/i;
 async function run() {
     const defaultJUnit = path.resolve(process.cwd(), "src/results.xml");
     const argv = yargsFactory(hideBin(process.argv))
+        .scriptName("ado-test-reporter pr-gate")
         .options({
             "junit-file": {
                 type: "string",
@@ -53,10 +55,21 @@ async function run() {
                 describe: "Optional ADO Test Run URL to link in the PR comment",
             },
         })
+        .strict()
+        .help()
+        .alias("h", "help")
         .parseSync();
 
     const configService = new ConfigService();
     const env = configService.loadEnvironment();
+
+    const junitFile = path.resolve(argv["junit-file"] || defaultJUnit);
+    if (!fs.existsSync(junitFile)) {
+        throw new Error(
+            `JUnit XML file not found: ${junitFile}. Pass --junit-file <path> to specify your test results file.`
+        );
+    }
+
     const logger = new AuditLogger(env.auditLogPath);
     const azureClientProvider = new AzureClientProvider();
 
@@ -64,11 +77,14 @@ async function run() {
         env.token,
         env.orgUrl,
         env.authType,
-        logger
+        logger,
+        {
+            maxRetries: env.maxRetries,
+            baseDelayMs: env.retryBaseDelayMs,
+        }
     );
 
     const parser = new JUnitParser();
-    const junitFile = path.resolve(argv["junit-file"] || defaultJUnit);
     const parsedCases = await parser.parse(junitFile);
 
     const quarantineService = new QuarantineService(logger);
