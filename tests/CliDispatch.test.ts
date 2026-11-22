@@ -52,11 +52,9 @@ describe("CLI Unified Router", () => {
     });
   });
 
-  test("falls back to publish when no subcommand is given", () => {
+  test("shows help when no arguments are given and falls back to publish for flag-only args", () => {
     expect(resolveCliDispatch([])).toEqual({
-      action: "run",
-      command: "publish",
-      modulePath: "./index",
+      action: "help",
       forwardedArgs: [],
     });
 

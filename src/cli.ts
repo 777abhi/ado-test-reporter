@@ -30,7 +30,7 @@ export interface CliDispatchResult {
 
 export function resolveCliDispatch(args: string[]): CliDispatchResult {
   if (args.length === 0) {
-    return { action: "run", command: "publish", modulePath: COMMAND_MODULES.publish, forwardedArgs: [] };
+    return { action: "help", forwardedArgs: [] };
   }
 
   const first = args[0];

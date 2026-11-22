@@ -68,6 +68,13 @@ export class App {
             timestamp: new Date().toISOString(),
         };
 
+        const parsedCases = await this.parser.parse(junitFile);
+        if (!parsedCases.length) {
+            this.logger.log("No test cases found in the JUnit file; exiting.");
+            return;
+        }
+        this.logger.log(`🧪 Parsed ${parsedCases.length} test cases from JUnit.`);
+
         const actualPlanName =
             planName.toLowerCase() === "auto-generate"
                 ? `AutoPlan-${buildNumber || new Date().toISOString().replace(/[:.]/g, "-")}`
@@ -83,13 +90,6 @@ export class App {
             planInfo.rootSuiteId,
             actualSuiteName
         );
-
-        const parsedCases = await this.parser.parse(junitFile);
-        if (!parsedCases.length) {
-            this.logger.log("No test cases found in the JUnit file; exiting.");
-            return;
-        }
-        this.logger.log(`🧪 Parsed ${parsedCases.length} test cases from JUnit.`);
 
         if (options.artifactsDir) {
             const artifactsDir = path.resolve(options.artifactsDir);

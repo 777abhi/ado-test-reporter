@@ -2,6 +2,30 @@
 
 A lightweight, enterprise-ready service that bridges automated test execution and Azure DevOps (ADO) Test Plans. It turns ephemeral JUnit XML results into persistent, traceable data—linking Test Cases, Plans, Suites, Defects, and Requirements automatically.
 
+## ⚡ Quick Start (CLI / `npx`)
+
+If you installed `ado-test-reporter` as a package (or run via `npx` in CI/CD or an external repository):
+
+```bash
+# Show all subcommands and usage
+npx ado-test-reporter --help
+
+# Publish JUnit XML results to Azure Test Plans
+npx ado-test-reporter publish \
+  --junit-file path/to/junit.xml \
+  --plan-name "Smoke Test Plan" \
+  --suite-name "Automated Regression" \
+  --attach-results
+
+# Other subcommands
+npx ado-test-reporter sync-features --pattern "features/**/*.feature"
+npx ado-test-reporter dashboard --days 30 --port 4200
+npx ado-test-reporter quarantine list
+npx ado-test-reporter pr-gate --junit-file path/to/junit.xml --pr-id 42
+```
+
+> All examples below also work via `ado-test-reporter <command>` (when installed as a package) or `npm run <script>` (when running from a cloned repository).
+
 ---
 
 ## 🤖 AI Agent & Developer Setup Playbook

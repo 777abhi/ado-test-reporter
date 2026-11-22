@@ -27,6 +27,7 @@ import * as fs from "fs";
 async function run() {
   const defaultJUnit = path.resolve(process.cwd(), "src/results.xml");
   const argv = yargsFactory(hideBin(process.argv))
+    .scriptName("ado-test-reporter publish")
     .options({
       "junit-file": {
         type: "string",
@@ -139,6 +140,9 @@ async function run() {
         describe: "Send webhook notification even when all tests pass with no regressions or expired quarantines",
       },
     })
+    .strict()
+    .help()
+    .alias("h", "help")
     .parseSync();
 
   const configService: IConfigService = new ConfigService();
@@ -146,6 +150,12 @@ async function run() {
 
   const env = configService.loadEnvironment();
   const args = configService.loadArgs(argv, defaultJUnit);
+
+  if (!fs.existsSync(args.junitFile)) {
+    throw new Error(
+      `JUnit XML file not found: ${args.junitFile}. Pass --junit-file <path> to specify your test results file.`
+    );
+  }
 
   const logger = new AuditLogger(env.auditLogPath);
   logger.logAudit({

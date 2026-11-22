@@ -20,6 +20,7 @@ async function main() {
   }
 
   const argv = yargsFactory(hideBin(process.argv))
+    .scriptName("ado-test-reporter dashboard")
     .options({
       mode: {
         type: "string",
@@ -105,35 +106,53 @@ async function main() {
         describe: "Export format in export mode",
       },
     })
+    .strict()
+    .help()
+    .alias("h", "help")
     .parseSync();
 
   const logger = new ConsoleLogger();
 
   const token = process.env.SYSTEM_ACCESSTOKEN || process.env.ADO_TOKEN || "";
-  const orgUrl =
+  const rawOrgUrl =
     process.env.SYSTEM_TEAMFOUNDATIONCOLLECTIONURI ||
     process.env.ADO_ORG_URL ||
-    "https://dev.azure.com/contoso-eng";
-  const project =
+    "";
+  const rawProject =
     process.env.SYSTEM_TEAMPROJECT ||
     process.env.ADO_PROJECT ||
-    "CloudCommerce";
+    "";
+  const authType = process.env.ADO_AUTH_TYPE || "auto";
   const defectType = process.env.ADO_DEFECT_TYPE || "Task";
+
+  if (token) {
+    SecretRedactor.registerSecret(token);
+  }
+
+  if (argv.sync && !argv.demo) {
+    const missing: string[] = [];
+    if (!token) missing.push("ADO_TOKEN (or SYSTEM_ACCESSTOKEN)");
+    if (!rawOrgUrl) missing.push("ADO_ORG_URL (or SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)");
+    if (!rawProject) missing.push("ADO_PROJECT (or SYSTEM_TEAMPROJECT)");
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing required environment variable(s) for live dashboard sync: ${missing.join(", ")}. Set them in .env, or pass --no-sync (cached data) or --demo (sample data).`
+      );
+    }
+  }
+
+  const orgUrl = rawOrgUrl || "https://dev.azure.com/demo-org";
+  const project = rawProject || "DemoProject";
 
   const cacheRepo = new DashboardCacheRepository(logger, argv["cache-file"]);
 
   let testApi;
   let workItemApi;
-  const hasLiveCredentials = Boolean(
-    token &&
-      (process.env.SYSTEM_TEAMFOUNDATIONCOLLECTIONURI || process.env.ADO_ORG_URL) &&
-      (process.env.SYSTEM_TEAMPROJECT || process.env.ADO_PROJECT)
-  );
 
-  if (hasLiveCredentials && argv.sync && !argv.demo) {
+  if (argv.sync && !argv.demo) {
     try {
       const clientProvider = new AzureClientProvider();
-      const clients = await clientProvider.createClients(token, orgUrl);
+      const clients = await clientProvider.createClients(token, orgUrl, authType, logger);
       testApi = clients.testApi;
       workItemApi = clients.workItemApi;
     } catch (err) {
